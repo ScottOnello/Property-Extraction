@@ -4,7 +4,7 @@ import argparse
 from datetime import date
 from pathlib import Path
 
-from .prospector import BASE_WHERE, LAYER_URL, SCORING_VERSION, SOURCE_MAP_URL, download_fourplexes, prepare_records, write_csv, write_summary
+from .prospector import BASE_WHERE, LAYER_URL, SCORING_VERSION, SOURCE_MAP_URL, download_fourplexes, prepare_records, write_csv, write_portfolio_csv, write_summary
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,11 +21,14 @@ def main(argv: list[str] | None = None) -> int:
     if args.minimum_years_owned < 0:
         raise SystemExit("--minimum-years-owned must be zero or greater")
     result = download_fourplexes(timeout=args.timeout)
-    all_records, prospects = prepare_records(result.records, args.as_of, args.minimum_years_owned)
+    all_records, prospects, portfolios = prepare_records(result.records, args.as_of, args.minimum_years_owned)
     write_csv(args.output_dir / "all_fourplexes.csv", all_records)
     write_csv(args.output_dir / "fourplex_prospects.csv", prospects)
+    write_portfolio_csv(args.output_dir / "owner_portfolios.csv", portfolios)
     write_summary(args.output_dir / "run_summary.json", {
         "all_fourplex_records": len(all_records), "prospect_records": len(prospects),
+        "normalized_owner_groups": len(portfolios),
+        "multi_fourplex_owner_groups": sum(int(row["Fourplex_Parcel_Count"]) >= 2 for row in portfolios),
         "minimum_years_owned": args.minimum_years_owned, "as_of": args.as_of.isoformat(),
         "retrieved_at_utc": result.retrieved_at, "base_query": BASE_WHERE,
         "source_layer_url": LAYER_URL, "source_map_url": SOURCE_MAP_URL,
@@ -34,4 +37,5 @@ def main(argv: list[str] | None = None) -> int:
     })
     print(f"Downloaded {len(all_records):,} fourplex records.")
     print(f"Wrote {len(prospects):,} prospects to {args.output_dir.resolve()}.")
+    print(f"Grouped them into {len(portfolios):,} normalized owner portfolios.")
     return 0

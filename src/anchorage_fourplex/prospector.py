@@ -7,6 +7,8 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import unicodedata
+from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
@@ -16,7 +18,7 @@ LAYER_URL = "https://services2.arcgis.com/Ce3DhLRthdwbHlfF/arcgis/rest/services/
 QUERY_URL = f"{LAYER_URL}/query"
 SOURCE_MAP_URL = "https://experience.arcgis.com/experience/3fab5d36349c451aa40402838530d1d4"
 BASE_WHERE = "Total_Living_Units = 4 AND GIS_Category = 'Parcel'"
-SCORING_VERSION = "1.0"
+SCORING_VERSION = "2.0"
 FIELDS = [
     "OBJECTID", "Parcel_ID", "Parcel_ID_URL", "Parcel_Address", "Property_Type",
     "Class", "Land_Use", "Total_Living_Units", "Owner_Name", "Owner_Address",
@@ -31,6 +33,12 @@ ENTITY_TERMS = re.compile(
 )
 INDIVIDUAL_SPECIAL_TERMS = re.compile(r"\b(TRUST|TRUSTEE|ESTATE|HEIRS?)\b", re.IGNORECASE)
 ADDRESS_NOISE = re.compile(r"[^A-Z0-9]+")
+OWNER_NOISE = re.compile(r"[^A-Z0-9]+")
+ENTITY_SUFFIXES = {
+    "LLC", "INC", "INCORPORATED", "CORP", "CORPORATION", "COMPANY", "CO",
+    "LP", "LLP", "LTD", "LIMITED", "PARTNERSHIP", "PC", "PLLC",
+}
+OWNER_ROLE_TERMS = {"TRUSTEE", "TTEE", "PERSONAL", "REPRESENTATIVE"}
 
 
 @dataclass(frozen=True)
@@ -119,6 +127,31 @@ def owner_type(owner_name: Any) -> str:
     return "individual_or_estate"
 
 
+def normalize_owner_name(owner_name: Any) -> str:
+    """Return a conservative deterministic owner key without inventing matches."""
+    raw = unicodedata.normalize("NFKD", str(owner_name or "")).encode("ascii", "ignore").decode()
+    text = raw.upper().replace("L.L.C.", " LLC ").replace("L.L.C", " LLC ").replace("&", " AND ")
+    tokens = OWNER_NOISE.sub(" ", text).split()
+    classification = owner_type(owner_name)
+    if classification == "entity_or_government":
+        tokens = [token for token in tokens if token not in ENTITY_SUFFIXES]
+    else:
+        tokens = [token for token in tokens if token not in OWNER_ROLE_TERMS]
+    collapsed: list[str] = []
+    for token in tokens:
+        if not collapsed or collapsed[-1] != token:
+            collapsed.append(token)
+    return " ".join(collapsed)
+
+
+def owner_group_key(record: dict[str, Any]) -> str:
+    normalized = normalize_owner_name(record.get("Owner_Name"))
+    if not normalized:
+        return f"UNKNOWN:{record.get('Parcel_ID') or record.get('OBJECTID') or ''}"
+    prefix = "ENTITY" if owner_type(record.get("Owner_Name")) == "entity_or_government" else "PERSON"
+    return f"{prefix}:{normalized}"
+
+
 def score_record(record: dict[str, Any], as_of: date) -> dict[str, Any]:
     result = dict(record)
     deed_date = epoch_millis_to_date(record.get("Deed_Date"))
@@ -162,6 +195,8 @@ def score_record(record: dict[str, Any], as_of: date) -> dict[str, Any]:
         "Absentee_Indicator": absentee,
         "Out_Of_State_Indicator": out_of_state,
         "Owner_Type": classification,
+        "Normalized_Owner_Name": normalize_owner_name(record.get("Owner_Name")),
+        "Owner_Group_Key": owner_group_key(record),
         "Opportunity_Score": score,
         "Score_Reasons": "; ".join(reasons),
         "Data_Quality_Flags": "; ".join(flags),
@@ -170,17 +205,81 @@ def score_record(record: dict[str, Any], as_of: date) -> dict[str, Any]:
     return result
 
 
-def prepare_records(records: Iterable[dict[str, Any]], as_of: date, minimum_years_owned: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _portfolio_bonus(property_count: int) -> int:
+    if property_count >= 5:
+        return 15
+    if property_count >= 3:
+        return 10
+    if property_count >= 2:
+        return 5
+    return 0
+
+
+def enrich_portfolios(scored: list[dict[str, Any]], minimum_years_owned: int) -> list[dict[str, Any]]:
+    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in scored:
+        groups[str(row["Owner_Group_Key"])].append(row)
+    summaries: list[dict[str, Any]] = []
+    for key, rows in groups.items():
+        count = len(rows)
+        bonus = _portfolio_bonus(count)
+        assessed = sum(float(row.get("Appraised_Total_Value") or 0) for row in rows)
+        years = [int(row["Years_Owned"]) for row in rows if isinstance(row.get("Years_Owned"), int)]
+        long_held = sum(year >= minimum_years_owned for year in years)
+        base_scores = [int(row["Opportunity_Score"]) for row in rows]
+        enhanced = min(100, max(base_scores) + bonus)
+        addresses = sorted(str(row.get("Parcel_Address") or "") for row in rows if row.get("Parcel_Address"))
+        for row in rows:
+            row.update({
+                "Fourplex_Portfolio_Count": count,
+                "Fourplex_Portfolio_Units": sum(int(item.get("Total_Living_Units") or 0) for item in rows),
+                "Fourplex_Portfolio_Assessed_Value": round(assessed, 2),
+                "Fourplex_Portfolio_20Plus_Count": long_held,
+                "Portfolio_Bonus": bonus,
+                "Enhanced_Opportunity_Score": min(100, int(row["Opportunity_Score"]) + bonus),
+            })
+        representative = rows[0]
+        summaries.append({
+            "Portfolio_Opportunity_Score": enhanced,
+            "Owner_Group_Key": key,
+            "Normalized_Owner_Name": representative.get("Normalized_Owner_Name", ""),
+            "Representative_Owner_Name": representative.get("Owner_Name", ""),
+            "Owner_Type": representative.get("Owner_Type", ""),
+            "Fourplex_Parcel_Count": count,
+            "Fourplex_Unit_Count": sum(int(row.get("Total_Living_Units") or 0) for row in rows),
+            "Fourplex_20Plus_Count": long_held,
+            "Total_Assessed_Value": round(assessed, 2),
+            "Oldest_Apparent_Years_Owned": max(years) if years else "",
+            "Out_Of_State_Parcel_Count": sum(bool(row.get("Out_Of_State_Indicator")) for row in rows),
+            "Absentee_Parcel_Count": sum(bool(row.get("Absentee_Indicator")) for row in rows),
+            "Portfolio_Bonus": bonus,
+            "Representative_Mailing_Address": representative.get("Owner_Address", ""),
+            "Representative_Mailing_City": representative.get("Owner_City", ""),
+            "Representative_Mailing_State": representative.get("Owner_State", ""),
+            "Representative_Mailing_Zip": representative.get("Owner_Zip", ""),
+            "Property_Addresses": " | ".join(addresses),
+            "Data_Coverage_Note": "Counts include fourplex parcels in the MOA assessment layer only.",
+        })
+    summaries.sort(key=lambda row: (-int(row["Portfolio_Opportunity_Score"]), -int(row["Fourplex_Parcel_Count"]), str(row["Normalized_Owner_Name"])))
+    return summaries
+
+
+def prepare_records(records: Iterable[dict[str, Any]], as_of: date, minimum_years_owned: int) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     scored = [score_record(record, as_of) for record in records]
+    portfolios = enrich_portfolios(scored, minimum_years_owned)
     all_records = sorted(scored, key=lambda row: (str(row.get("Parcel_Address") or ""), str(row.get("Parcel_ID") or "")))
     prospects = [row for row in scored if isinstance(row.get("Years_Owned"), int) and row["Years_Owned"] >= minimum_years_owned]
-    prospects.sort(key=lambda row: (-int(row["Opportunity_Score"]), -int(row["Years_Owned"]), str(row.get("Parcel_Address") or "")))
-    return all_records, prospects
+    prospects.sort(key=lambda row: (-int(row["Enhanced_Opportunity_Score"]), -int(row["Opportunity_Score"]), -int(row["Years_Owned"]), str(row.get("Parcel_Address") or "")))
+    return all_records, prospects, portfolios
 
 
 OUTPUT_FIELDS = [
-    "Opportunity_Score", "Score_Reasons", "Parcel_Address", "Parcel_ID",
+    "Enhanced_Opportunity_Score", "Opportunity_Score", "Portfolio_Bonus",
+    "Score_Reasons", "Parcel_Address", "Parcel_ID",
     "Total_Living_Units", "Owner_Name", "Owner_Type", "Owner_Address",
+    "Normalized_Owner_Name", "Owner_Group_Key", "Fourplex_Portfolio_Count",
+    "Fourplex_Portfolio_Units", "Fourplex_Portfolio_Assessed_Value",
+    "Fourplex_Portfolio_20Plus_Count",
     "Owner_City", "Owner_State", "Owner_Zip", "Absentee_Indicator",
     "Out_Of_State_Indicator", "Deed_Date", "Years_Owned", "YearBuilt_Min",
     "YearBuilt_Max", "Property_Type", "Class", "Land_Use", "Zoning_District",
@@ -189,11 +288,29 @@ OUTPUT_FIELDS = [
     "Total_Exemptions", "Data_Quality_Flags", "Evidence_URL",
 ]
 
+PORTFOLIO_FIELDS = [
+    "Portfolio_Opportunity_Score", "Representative_Owner_Name", "Normalized_Owner_Name",
+    "Owner_Group_Key", "Owner_Type", "Fourplex_Parcel_Count", "Fourplex_Unit_Count",
+    "Fourplex_20Plus_Count", "Total_Assessed_Value", "Oldest_Apparent_Years_Owned",
+    "Out_Of_State_Parcel_Count", "Absentee_Parcel_Count", "Portfolio_Bonus",
+    "Representative_Mailing_Address", "Representative_Mailing_City",
+    "Representative_Mailing_State", "Representative_Mailing_Zip", "Property_Addresses",
+    "Data_Coverage_Note",
+]
+
 
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=OUTPUT_FIELDS, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def write_portfolio_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8-sig", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=PORTFOLIO_FIELDS, extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
 
