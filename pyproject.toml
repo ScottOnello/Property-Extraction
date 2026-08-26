@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "anchorage-fourplex-prospector"
+version = "0.1.0"
+description = "Download and rank Municipality of Anchorage fourplex assessment records"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+anchorage-fourplex = "anchorage_fourplex.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
