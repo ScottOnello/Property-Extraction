@@ -5,4 +5,8 @@ __pycache__/
 outputs/
 node_modules/
 *.log
-
+.next/
+.vercel/
+.env*
+!.env.example
+.pnpm-store/

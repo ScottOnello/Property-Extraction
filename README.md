@@ -4,6 +4,17 @@ A standalone, auditable prospecting tool for Municipality of Anchorage parcels r
 
 This project is intentionally separate from the auction scraper and Property Underwriter.
 
+## Private web application
+
+The repository now includes an authenticated Next.js dashboard designed for Vercel. It queries the public Anchorage ArcGIS service on the server, caches results for one hour, and does not commit generated owner/property datasets. Configure `SITE_PASSWORD` and `AUTH_SECRET` as Vercel environment variables before deployment.
+
+```powershell
+pnpm install
+pnpm dev
+```
+
+The dashboard provides ranked prospects, conservative owner portfolios, filters, property details, evidence links, and a visible scoring method. This password gate is intended for a small private deployment; use a full identity provider and database-backed authorization before granting access to a larger team.
+
 ## What it produces
 
 - `all_fourplexes.csv` — every current parcel returned with four living units.
