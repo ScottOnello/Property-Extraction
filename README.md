@@ -15,6 +15,10 @@ pnpm dev
 
 The dashboard provides ranked prospects, conservative owner portfolios, filters, property details, evidence links, and a visible scoring method. This password gate is intended for a small private deployment; use a full identity provider and database-backed authorization before granting access to a larger team.
 
+### Buy Lab
+
+Open any prospect and choose **Analyze this deal** to model purchase price, rent, expenses, financing structures, DSCR, cap rate, cash to close, 30-year equity, annual cash flow, and the required flip-rehab tiers. The comparable-sales workspace accepts verified closed-sale comps and deliberately keeps them separate from municipal assessment references. Editable assumptions stay in the active browser session and are not committed to Git.
+
 ## What it produces
 
 - `all_fourplexes.csv` — every current parcel returned with four living units.
