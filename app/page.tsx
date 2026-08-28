@@ -13,7 +13,7 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const selected = query.parcel ? properties.find((property) => property.parcelId === query.parcel) : undefined;
   return <div className="app-shell">
     <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div>
-      <nav><a className={view === "properties" ? "active" : ""} href="/?view=properties">Prospects</a><a className={view === "owners" ? "active" : ""} href="/?view=owners">Owner portfolios</a><a href="/analyze">Buy Lab</a><a href="/#method">Scoring method</a></nav></div>
+      <nav><a className={view === "properties" ? "active" : ""} href="/?view=properties">Prospects</a><a className={view === "owners" ? "active" : ""} href="/?view=owners">Owner portfolios</a><a href="/rankings">Deal rankings</a><a href="/analyze">Buy Lab</a><a href="/#method">Scoring method</a></nav></div>
       <form action="/api/logout" method="post"><button className="logout">Sign out</button></form>
     </aside>
     <main className="workspace">

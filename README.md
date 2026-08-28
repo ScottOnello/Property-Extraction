@@ -19,6 +19,8 @@ The dashboard provides ranked prospects, conservative owner portfolios, filters,
 
 Open any prospect and choose **Analyze this deal** to model purchase price, rent, expenses, financing structures, DSCR, cap rate, cash to close, 30-year equity, annual cash flow, and the required flip-rehab tiers. The comparable-sales workspace accepts verified closed-sale comps and deliberately keeps them separate from municipal assessment references. Editable assumptions stay in the active browser session and are not committed to Git.
 
+The **Deal rankings** view adds parcel aerial imagery, 10-year levered IRR, equity multiple, debt yield, break-even occupancy, cash-on-cash return, DSCR, cap rate, and a risk-adjusted rank for the complete fourplex dataset. Its strict A–F location grade uses distance to Downtown, Midtown, U-Med, the airport, and JBER, including an outer-area penalty. It does not use demographic characteristics.
+
 ## What it produces
 
 - `all_fourplexes.csv` — every current parcel returned with four living units.

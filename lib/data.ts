@@ -11,6 +11,8 @@ export type Property = {
   zoning: string; absentee: boolean; outOfState: boolean; ownerType: string;
   ownerKey: string; baseScore: number; portfolioBonus: number; score: number;
   portfolioCount: number; portfolioUnits: number; evidenceUrl: string; reasons: string[];
+  latitude: number | null; longitude: number | null; aerialUrl: string;
+  locationScore: number; locationGrade: string; locationTier: string; locationReasons: string[];
 };
 
 export type Portfolio = {
@@ -37,6 +39,51 @@ function yearsSince(epoch: number | null) {
   return years;
 }
 
+function centroid(geometry: { rings?: number[][][] } | undefined) {
+  const points = geometry?.rings?.flat() ?? [];
+  if (!points.length) return { latitude: null, longitude: null };
+  const longitude = points.reduce((sum, point) => sum + point[0], 0) / points.length;
+  const latitude = points.reduce((sum, point) => sum + point[1], 0) / points.length;
+  return { latitude, longitude };
+}
+
+function milesBetween(latitude: number, longitude: number, targetLatitude: number, targetLongitude: number) {
+  const radians = (value: number) => value * Math.PI / 180;
+  const deltaLatitude = radians(targetLatitude - latitude);
+  const deltaLongitude = radians(targetLongitude - longitude);
+  const a = Math.sin(deltaLatitude / 2) ** 2 + Math.cos(radians(latitude)) * Math.cos(radians(targetLatitude)) * Math.sin(deltaLongitude / 2) ** 2;
+  return 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function locationAnalysis(latitude: number | null, longitude: number | null) {
+  if (latitude === null || longitude === null) return { locationScore: 0, locationGrade: "F", locationTier: "Unrated", locationReasons: ["Parcel geometry unavailable"] };
+  const anchors = [
+    { name: "Downtown", latitude: 61.2176, longitude: -149.8997, weight: 20, radius: 8 },
+    { name: "Midtown", latitude: 61.1907, longitude: -149.8681, weight: 20, radius: 7 },
+    { name: "U-Med", latitude: 61.1886, longitude: -149.8174, weight: 25, radius: 9 },
+    { name: "Airport", latitude: 61.1743, longitude: -149.9985, weight: 15, radius: 12 },
+    { name: "JBER", latitude: 61.2534, longitude: -149.7933, weight: 20, radius: 14 },
+  ];
+  const measurements = anchors.map((anchor) => ({ ...anchor, miles: milesBetween(latitude, longitude, anchor.latitude, anchor.longitude) }));
+  const nearest = [...measurements].sort((a, b) => a.miles - b.miles);
+  const rawScore = measurements.reduce((score, anchor) => score + Math.max(0, 1 - anchor.miles / anchor.radius) * anchor.weight, 0);
+  const isolationPenalty = nearest[0].miles > 5 ? 15 : nearest[0].miles > 3.5 ? 8 : 0;
+  const locationScore = Math.max(0, Math.round(rawScore - isolationPenalty));
+  const locationGrade = locationScore >= 72 ? "A" : locationScore >= 60 ? "B" : locationScore >= 48 ? "C" : locationScore >= 35 ? "D" : "F";
+  const locationTier = `${nearest[0].name} access area`;
+  const locationReasons = nearest.slice(0, 3).map((anchor) => `${anchor.miles.toFixed(1)} mi to ${anchor.name}`);
+  if (isolationPenalty) locationReasons.push(`${isolationPenalty}-point outer-area penalty`);
+  return { locationScore, locationGrade, locationTier, locationReasons };
+}
+
+function aerialUrl(latitude: number | null, longitude: number | null) {
+  if (latitude === null || longitude === null) return "";
+  const width = 0.0042;
+  const height = 0.0022;
+  const bbox = [longitude - width, latitude - height, longitude + width, latitude + height].join(",");
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?${new URLSearchParams({ bbox, bboxSR: "4326", imageSR: "4326", size: "900,520", format: "jpg", f: "image" })}`;
+}
+
 async function arcgis(params: Record<string, string>) {
   const url = `${SERVICE}?${new URLSearchParams({ f: "json", ...params })}`;
   const response = await fetch(url, { headers: { "User-Agent": "Property-Extraction-Web/0.2" }, cache: "no-store" });
@@ -51,8 +98,8 @@ async function load() {
   const ids: number[] = (idsResult.objectIds ?? []).sort((a: number, b: number) => a - b);
   const raw: Record<string, unknown>[] = [];
   for (let index = 0; index < ids.length; index += 100) {
-    const page = await arcgis({ objectIds: ids.slice(index, index + 100).join(","), outFields: FIELDS, returnGeometry: "false" });
-    raw.push(...(page.features ?? []).map((feature: { attributes: Record<string, unknown> }) => feature.attributes));
+    const page = await arcgis({ objectIds: ids.slice(index, index + 100).join(","), outFields: FIELDS, returnGeometry: "true", outSR: "4326" });
+    raw.push(...(page.features ?? []).map((feature: { attributes: Record<string, unknown>; geometry?: { rings?: number[][][] } }) => ({ ...feature.attributes, __geometry: feature.geometry })));
   }
   if (raw.length !== ids.length) throw new Error(`Completeness check failed: ${raw.length}/${ids.length}`);
 
@@ -82,6 +129,8 @@ async function load() {
     const group = groups.get(item.ownerKey) ?? [item];
     const bonus = group.length >= 5 ? 15 : group.length >= 3 ? 10 : group.length >= 2 ? 5 : 0;
     const row = item.row;
+    const point = centroid(row.__geometry as { rings?: number[][][] } | undefined);
+    const location = locationAnalysis(point.latitude, point.longitude);
     return {
       parcelId: String(row.Parcel_ID ?? ""), address: String(row.Parcel_Address ?? "Unknown address"), owner: String(row.Owner_Name ?? "Unknown owner"),
       ownerAddress: String(row.Owner_Address ?? ""), ownerCity: String(row.Owner_City ?? ""), ownerState: String(row.Owner_State ?? ""), ownerZip: String(row.Owner_Zip ?? ""),
@@ -89,6 +138,8 @@ async function load() {
       assessedValue: Number(row.Appraised_Total_Value) || 0, zoning: String(row.Zoning_District ?? ""), absentee: item.absentee, outOfState: item.outOfState,
       ownerType: item.ownerType, ownerKey: item.ownerKey, baseScore: item.baseScore, portfolioBonus: bonus, score: Math.min(100, item.baseScore + bonus),
       portfolioCount: group.length, portfolioUnits: group.length * 4, evidenceUrl: String(row.Parcel_ID_URL ?? "https://property.muni.org/"), reasons: item.reasons,
+      latitude: point.latitude, longitude: point.longitude, aerialUrl: aerialUrl(point.latitude, point.longitude),
+      locationScore: location.locationScore, locationGrade: location.locationGrade, locationTier: location.locationTier, locationReasons: location.locationReasons,
     };
   }).sort((a, b) => b.score - a.score || (b.yearsOwned ?? 0) - (a.yearsOwned ?? 0));
 
@@ -102,4 +153,4 @@ async function load() {
   return { properties, portfolios, fetchedAt: new Date().toISOString() };
 }
 
-export const getPropertyData = unstable_cache(load, ["anchorage-fourplex-v2"], { revalidate: 3600, tags: ["properties"] });
+export const getPropertyData = unstable_cache(load, ["anchorage-fourplex-v3"], { revalidate: 3600, tags: ["properties"] });

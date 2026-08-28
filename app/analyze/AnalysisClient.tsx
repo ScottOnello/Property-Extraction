@@ -1,7 +1,9 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 
 import { useMemo, useState } from "react";
 import type { Property } from "@/lib/data";
+import { irr } from "@/lib/finance";
 
 type Comp = { id: number; address: string; soldPrice: number; saleDate: string; sqft: number; units: number };
 type Reference = { address: string; value: number; yearBuilt: number | null; parcelId: string };
@@ -67,7 +69,11 @@ export default function AnalysisClient({ subject, references }: { subject: Prope
       const endingBalance = balance(loan, scenario.rate, scenario.years, year * 12);
       return { year, value, equity: value - Math.max(0, endingBalance), cashFlow: annualCashFlow };
     });
-    return { loan, monthlyPI, gross, operating, noi, cashFlow, cashToClose, compMedian, years, capRate: price ? noi / price * 100 : 0, dscr: monthlyPI ? noi / (monthlyPI * 12) : 0 };
+    const tenYearFlows = [-cashToClose, ...years.slice(0, 10).map((row, index) => index === 9 ? row.cashFlow + row.value * .92 - balance(loan, scenario.rate, scenario.years, 120) : row.cashFlow)];
+    const tenYearIrr = irr(tenYearFlows);
+    const debtYield = loan ? noi / loan * 100 : 0;
+    const breakEvenOccupancy = gross ? (operating - gross * vacancy / 100 + monthlyPI * 12) / gross * 100 : 0;
+    return { loan, monthlyPI, gross, operating, noi, cashFlow, cashToClose, compMedian, years, tenYearIrr, debtYield, breakEvenOccupancy, capRate: price ? noi / price * 100 : 0, dscr: monthlyPI ? noi / (monthlyPI * 12) : 0 };
   }, [price, scenario, monthlyRent, taxes, insurance, utilities, vacancy, maintenance, management, appreciation, rentGrowth, comps]);
 
   const maxEquity = Math.max(...model.years.map((row) => row.equity), 1);
@@ -79,6 +85,7 @@ export default function AnalysisClient({ subject, references }: { subject: Prope
     <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a href="/">← Prospects</a><a className="active" href={`/analyze?parcel=${subject.parcelId}`}>Buy Lab</a><a href="#comps">Comparable sales</a><a href="#returns">30-year outlook</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
     <main className="workspace model-workspace">
       <header><div><p className="eyebrow">INTERACTIVE ACQUISITION MODEL · PARCEL {subject.parcelId}</p><h1>{subject.address}</h1><p className="muted">Compare ways to buy, validate value with comps, and see the long-term financial tradeoffs.</p></div><a className="evidence top-evidence" target="_blank" rel="noreferrer" href={subject.evidenceUrl}>Municipal record ↗</a></header>
+      <section className="subject-visual"><div className="subject-aerial">{subject.aerialUrl ? <img src={subject.aerialUrl} alt={`Aerial view of ${subject.address}`}/> : <div className="image-missing">Aerial imagery unavailable</div>}<span>Esri World Imagery · parcel vicinity</span></div><div className="location-card"><p className="eyebrow">HARSH LOCATION GRADE</p><strong className={`grade grade-${subject.locationGrade.toLowerCase()}`}>{subject.locationGrade}</strong><h2>{subject.locationScore}/100</h2><p>{subject.locationTier}</p><div className="location-badges">{subject.locationReasons.map((reason) => <span key={reason}>{reason}</span>)}</div><small>Strict access score only. It does not use demographics or make claims about neighborhood residents.</small></div></section>
       <section className="model-summary">
         <div><span>Municipal assessment</span><strong>{money.format(subject.assessedValue)}</strong><small>Screening reference, not a sale comp</small></div><div><span>Model purchase price</span><strong>{money.format(price)}</strong><small>Editable below</small></div><div><span>Monthly cash flow</span><strong className={model.cashFlow >= 0 ? "positive" : "negative"}>{money.format(model.cashFlow / 12)}</strong><small>Before income tax</small></div><div><span>Cash to close</span><strong>{money.format(model.cashToClose)}</strong><small>Down payment + 2% closing</small></div>
       </section>
@@ -99,7 +106,7 @@ export default function AnalysisClient({ subject, references }: { subject: Prope
       <section id="returns" className="panel outlook"><div className="panel-head"><div><p className="eyebrow">30-YEAR FINANCIAL MODEL</p><h2>Equity and annual cash flow</h2></div><div className="legend"><span><i className="blue"/>Equity</span><span><i className="green"/>Cash flow</span></div></div>
         <div className="chart-pair"><div className="chart"><div className="chart-label">Projected equity</div><svg viewBox="0 0 900 240" role="img" aria-label="Projected equity by year"><line x1="35" y1="210" x2="880" y2="210" className="axis"/><polyline points={model.years.map((row, index) => `${35 + index * 29},${210 - row.equity / maxEquity * 180}`).join(" ")} className="equity-line" fill="none"/><path d={`M35 210 L${model.years.map((row, index) => `${35 + index * 29} ${210 - row.equity / maxEquity * 180}`).join(" L")} L876 210 Z`} className="equity-fill"/></svg><div className="chart-ticks"><span>Year 1</span><span>Year 10</span><span>Year 20</span><span>Year 30 · {compactMoney.format(model.years[29].equity)}</span></div></div>
           <div className="chart"><div className="chart-label">Annual cash flow <small>zero line shown</small></div><svg viewBox="0 0 900 240" role="img" aria-label="Annual cash flow by year"><line x1="35" y1="120" x2="880" y2="120" className="zero"/>{model.years.map((row, index) => { const height = Math.abs(row.cashFlow) / maxCashFlow * 95; const y = row.cashFlow >= 0 ? 120 - height : 120; return <rect key={row.year} x={35 + index * 28} y={y} width="16" height={height} className={row.cashFlow >= 0 ? "bar-positive" : "bar-negative"}/>; })}</svg><div className="chart-ticks"><span>Year 1</span><span>Year 10</span><span>Year 20</span><span>Year 30 · {compactMoney.format(model.years[29].cashFlow)}</span></div></div></div>
-        <div className="return-kpis"><div><span>Year-one NOI</span><strong>{money.format(model.noi)}</strong></div><div><span>Cap rate</span><strong>{model.capRate.toFixed(2)}%</strong></div><div><span>Year-one DSCR</span><strong>{model.dscr.toFixed(2)}×</strong></div><div><span>Year-10 equity</span><strong>{money.format(model.years[9].equity)}</strong></div></div>
+        <div className="return-kpis"><div><span>Year-one NOI</span><strong>{money.format(model.noi)}</strong></div><div><span>Cap rate</span><strong>{model.capRate.toFixed(2)}%</strong></div><div><span>Year-one DSCR</span><strong>{model.dscr.toFixed(2)}×</strong></div><div><span>10-year levered IRR</span><strong>{model.tenYearIrr.toFixed(1)}%</strong></div><div><span>Debt yield</span><strong>{model.debtYield.toFixed(2)}%</strong></div><div><span>Break-even occupancy</span><strong>{model.breakEvenOccupancy.toFixed(1)}%</strong></div><div><span>Year-10 equity</span><strong>{money.format(model.years[9].equity)}</strong></div></div>
       </section>
 
       <section id="comps" className="panel comps-panel"><div className="panel-head"><div><p className="eyebrow">VALUE VALIDATION</p><h2>Comparable sales workspace</h2><p>Enter verified closed sales from MLS, a broker, or recorded documents. The model uses their median—not municipal assessments—as the comp indication.</p></div><button className="primary" onClick={addComp}>+ Add sold comp</button></div>
