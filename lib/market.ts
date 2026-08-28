@@ -13,3 +13,10 @@ export const ZILLOW_MARKET_PULSE = {
     { address: "1238 E 9th Ave", rent: 1850, beds: 2, url: "https://www.zillow.com/homedetails/1238-E-9th-Ave-Anchorage-AK-99501/2060850249_zpid/" },
   ],
 };
+
+export const PUBLIC_PHOTO_SOURCES = [
+  { address: "3105 CHEECHAKO ST", source: "Crexi property record", photoCount: 0, url: "https://www.crexi.com/property-records/009-033-04-000-ANCHORAGE-AK-99503/66e1788f3c955212875fef1aba12f188d7450fe8" },
+  { address: "4521 CORDOVA ST", source: "Zillow listing", photoCount: 45, url: "https://www.zillow.com/homedetails/4521-Cordova-St-Anchorage-AK-99503/2112715355_zpid/" },
+  { address: "925 E 45TH CT", source: "Zillow listing", photoCount: 12, url: "https://www.zillow.com/homedetails/925-E-45th-Ct-Anchorage-AK-99503/2116097498_zpid/" },
+  { address: "330 N BLISS ST", source: "Zillow listing", photoCount: 17, url: "https://www.zillow.com/homedetails/330-N-Bliss-St-Anchorage-AK-99508/2127216099_zpid/" },
+];

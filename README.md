@@ -23,6 +23,8 @@ The **Deal rankings** view adds parcel aerial imagery, 10-year levered IRR, equi
 
 Buy Lab also includes a decision-first summary, a house-hack/owner-occupant rent-offset model, a graphical occupancy break-even marker, and a dated Zillow market pulse. Zillow asking prices and advertised rents are labeled as market anchors and never substituted for verified closed-sale comps.
 
+Rankings exclude modeled properties within one-quarter mile of Anchorage's nine identified transit-supportive corridors by default. The preference layer also boosts documented large-lot backyard potential and exposes garage and mountain-view status as verification items; it never invents those features when the assessor or a matching listing does not provide them.
+
 ## What it produces
 
 - `all_fourplexes.csv` — every current parcel returned with four living units.

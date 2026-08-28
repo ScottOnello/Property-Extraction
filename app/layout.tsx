@@ -3,6 +3,7 @@ import "./globals.css";
 import "./buylab.css";
 import "./rankings.css";
 import "./interpretive.css";
+import "./preferences.css";
 
 export const metadata: Metadata = { title: "Property Extraction", description: "Private Anchorage fourplex opportunity intelligence" };
 

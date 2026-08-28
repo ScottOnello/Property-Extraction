@@ -2,7 +2,7 @@ import { unstable_cache } from "next/cache";
 
 const SERVICE = "https://services2.arcgis.com/Ce3DhLRthdwbHlfF/arcgis/rest/services/PropertyInformation_Hosted/FeatureServer/0/query";
 const WHERE = "Total_Living_Units = 4 AND GIS_Category = 'Parcel'";
-const FIELDS = ["OBJECTID", "Parcel_ID", "Parcel_ID_URL", "Parcel_Address", "Total_Living_Units", "Owner_Name", "Owner_Address", "Owner_City", "Owner_State", "Owner_Zip", "Deed_Date", "YearBuilt_Min", "Appraised_Total_Value", "Zoning_District"].join(",");
+const FIELDS = ["OBJECTID", "Parcel_ID", "Parcel_ID_URL", "Parcel_Address", "Total_Living_Units", "Owner_Name", "Owner_Address", "Owner_City", "Owner_State", "Owner_Zip", "Deed_Date", "YearBuilt_Min", "Appraised_Total_Value", "Zoning_District", "Lot_Size"].join(",");
 
 export type Property = {
   parcelId: string; address: string; owner: string; ownerAddress: string;
@@ -13,6 +13,8 @@ export type Property = {
   portfolioCount: number; portfolioUnits: number; evidenceUrl: string; reasons: string[];
   latitude: number | null; longitude: number | null; aerialUrl: string;
   locationScore: number; locationGrade: string; locationTier: string; locationReasons: string[];
+  inTransitCorridor: boolean; transitCorridor: string; transitDistanceMiles: number | null;
+  lotSize: number; yardPotential: "Strong" | "Possible" | "Limited" | "Unknown";
 };
 
 export type Portfolio = {
@@ -53,6 +55,37 @@ function milesBetween(latitude: number, longitude: number, targetLatitude: numbe
   const deltaLongitude = radians(targetLongitude - longitude);
   const a = Math.sin(deltaLatitude / 2) ** 2 + Math.cos(radians(latitude)) * Math.cos(radians(targetLatitude)) * Math.sin(deltaLongitude / 2) ** 2;
   return 3958.8 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function pointSegmentMiles(latitude: number, longitude: number, start: number[], end: number[]) {
+  const referenceLatitude = latitude * Math.PI / 180;
+  const x = (value: number) => (value - longitude) * 69 * Math.cos(referenceLatitude);
+  const y = (value: number) => (value - latitude) * 69;
+  const ax = x(start[1]); const ay = y(start[0]); const bx = x(end[1]); const by = y(end[0]);
+  const lengthSquared = (bx - ax) ** 2 + (by - ay) ** 2;
+  const t = lengthSquared ? Math.max(0, Math.min(1, -(ax * (bx - ax) + ay * (by - ay)) / lengthSquared)) : 0;
+  return Math.hypot(ax + t * (bx - ax), ay + t * (by - ay));
+}
+
+function transitAnalysis(latitude: number | null, longitude: number | null) {
+  if (latitude === null || longitude === null) return { inTransitCorridor: false, transitCorridor: "Unknown", transitDistanceMiles: null };
+  const corridors = [
+    { name: "Spenard Road", points: [[61.214,-149.905],[61.190,-149.907],[61.175,-149.946]] },
+    { name: "15th / DeBarr", points: [[61.207,-149.900],[61.208,-149.733]] },
+    { name: "Northern Lights / Benson", points: [[61.196,-149.955],[61.194,-149.775]] },
+    { name: "Mountain View / Bragaw", points: [[61.223,-149.840],[61.223,-149.770],[61.180,-149.770]] },
+    { name: "Arctic Boulevard", points: [[61.218,-149.890],[61.145,-149.890]] },
+    { name: "Muldoon Road", points: [[61.225,-149.740],[61.135,-149.740]] },
+    { name: "A/C Street and Tudor", points: [[61.230,-149.880],[61.165,-149.880]] },
+    { name: "A/C Street and Tudor", points: [[61.180,-149.950],[61.180,-149.740]] },
+    { name: "Lake Otis / Abbott / 92nd", points: [[61.210,-149.840],[61.140,-149.840]] },
+    { name: "Lake Otis / Abbott / 92nd", points: [[61.140,-149.840],[61.140,-149.720]] },
+    { name: "Lake Otis / Abbott / 92nd", points: [[61.137,-149.970],[61.137,-149.840]] },
+    { name: "Jewel Lake Road", points: [[61.195,-149.955],[61.120,-149.955]] },
+  ];
+  const distances = corridors.map((corridor) => ({ name: corridor.name, distance: Math.min(...corridor.points.slice(1).map((point, index) => pointSegmentMiles(latitude, longitude, corridor.points[index], point))) }));
+  const nearest = distances.sort((a, b) => a.distance - b.distance)[0];
+  return { inTransitCorridor: nearest.distance <= .25, transitCorridor: nearest.name, transitDistanceMiles: nearest.distance };
 }
 
 function locationAnalysis(latitude: number | null, longitude: number | null) {
@@ -131,6 +164,9 @@ async function load() {
     const row = item.row;
     const point = centroid(row.__geometry as { rings?: number[][][] } | undefined);
     const location = locationAnalysis(point.latitude, point.longitude);
+    const transit = transitAnalysis(point.latitude, point.longitude);
+    const lotSize = Number(row.Lot_Size) || 0;
+    const yardPotential: Property["yardPotential"] = lotSize >= 10000 ? "Strong" : lotSize >= 7000 ? "Possible" : lotSize > 0 ? "Limited" : "Unknown";
     return {
       parcelId: String(row.Parcel_ID ?? ""), address: String(row.Parcel_Address ?? "Unknown address"), owner: String(row.Owner_Name ?? "Unknown owner"),
       ownerAddress: String(row.Owner_Address ?? ""), ownerCity: String(row.Owner_City ?? ""), ownerState: String(row.Owner_State ?? ""), ownerZip: String(row.Owner_Zip ?? ""),
@@ -140,6 +176,8 @@ async function load() {
       portfolioCount: group.length, portfolioUnits: group.length * 4, evidenceUrl: String(row.Parcel_ID_URL ?? "https://property.muni.org/"), reasons: item.reasons,
       latitude: point.latitude, longitude: point.longitude, aerialUrl: aerialUrl(point.latitude, point.longitude),
       locationScore: location.locationScore, locationGrade: location.locationGrade, locationTier: location.locationTier, locationReasons: location.locationReasons,
+      inTransitCorridor: transit.inTransitCorridor, transitCorridor: transit.transitCorridor, transitDistanceMiles: transit.transitDistanceMiles,
+      lotSize, yardPotential,
     };
   }).sort((a, b) => b.score - a.score || (b.yearsOwned ?? 0) - (a.yearsOwned ?? 0));
 
@@ -153,4 +191,4 @@ async function load() {
   return { properties, portfolios, fetchedAt: new Date().toISOString() };
 }
 
-export const getPropertyData = unstable_cache(load, ["anchorage-fourplex-v3"], { revalidate: 3600, tags: ["properties"] });
+export const getPropertyData = unstable_cache(load, ["anchorage-fourplex-v4"], { revalidate: 3600, tags: ["properties"] });

@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import type { Property } from "@/lib/data";
 import { irr } from "@/lib/finance";
-import { ZILLOW_MARKET_PULSE } from "@/lib/market";
+import { PUBLIC_PHOTO_SOURCES, ZILLOW_MARKET_PULSE } from "@/lib/market";
 
 type Comp = { id: number; address: string; soldPrice: number; saleDate: string; sqft: number; units: number };
 type Reference = { address: string; value: number; yearBuilt: number | null; parcelId: string };
@@ -49,6 +49,8 @@ export default function AnalysisClient({ subject, references }: { subject: Prope
   const [comps, setComps] = useState<Comp[]>([]);
   const [nextCompId, setNextCompId] = useState(1);
   const scenario = scenarios[active];
+  const photoSource = PUBLIC_PHOTO_SOURCES.find((source) => subject.address.toUpperCase().startsWith(source.address));
+  const zillowSearch = `https://www.zillow.com/homes/${encodeURIComponent(`${subject.address} Anchorage AK`)}_rb/`;
 
   const model = useMemo(() => {
     const loan = price * (1 - scenario.down / 100);
@@ -92,6 +94,7 @@ export default function AnalysisClient({ subject, references }: { subject: Prope
     <main className="workspace model-workspace">
       <header><div><p className="eyebrow">INTERACTIVE ACQUISITION MODEL · PARCEL {subject.parcelId}</p><h1>{subject.address}</h1><p className="muted">Compare ways to buy, validate value with comps, and see the long-term financial tradeoffs.</p></div><a className="evidence top-evidence" target="_blank" rel="noreferrer" href={subject.evidenceUrl}>Municipal record ↗</a></header>
       <section className="subject-visual"><div className="subject-aerial">{subject.aerialUrl ? <img src={subject.aerialUrl} alt={`Aerial view of ${subject.address}`}/> : <div className="image-missing">Aerial imagery unavailable</div>}<span>Esri World Imagery · parcel vicinity</span></div><div className="location-card"><p className="eyebrow">HARSH LOCATION GRADE</p><strong className={`grade grade-${subject.locationGrade.toLowerCase()}`}>{subject.locationGrade}</strong><h2>{subject.locationScore}/100</h2><p>{subject.locationTier}</p><div className="location-badges">{subject.locationReasons.map((reason) => <span key={reason}>{reason}</span>)}</div><small>Strict access score only. It does not use demographics or make claims about neighborhood residents.</small></div></section>
+      <section className="photo-transit-strip"><div><p className="eyebrow">INTERIOR PHOTO SEARCH</p><h3>{photoSource?.photoCount ? `${photoSource.photoCount} public listing photos found` : "No verified interior gallery found"}</h3><p>{photoSource?.photoCount ? `A matching ${photoSource.source} is available. Open it to review interiors and verify garage, yard, and view claims.` : `I found ${photoSource?.source ?? "no indexed matching listing"}, but no interior gallery that can be safely attributed to this exact property.`}</p><div><a className="primary" href={photoSource?.url ?? zillowSearch} target="_blank" rel="noreferrer">{photoSource?.photoCount ? "Open photo gallery ↗" : "Search Zillow ↗"}</a>{photoSource && !photoSource.photoCount && <a href={photoSource.url} target="_blank" rel="noreferrer">Open property record ↗</a>}</div></div><div className={subject.inTransitCorridor ? "transit-alert fail" : "transit-alert pass"}><span>{subject.inTransitCorridor ? "AVOID" : "PASS"}</span><h3>{subject.inTransitCorridor ? `Within ¼ mile of ${subject.transitCorridor}` : "Outside modeled transit corridors"}</h3><p>{subject.transitDistanceMiles === null ? "Distance unavailable" : `${subject.transitDistanceMiles.toFixed(2)} miles to nearest identified corridor (${subject.transitCorridor}).`}</p></div><div className="preference-check"><p className="eyebrow">YOUR PROPERTY PREFERENCES</p><dl><dt>Backyard potential</dt><dd className={subject.yardPotential === "Strong" ? "positive" : ""}>{subject.yardPotential}</dd><dt>Lot size</dt><dd>{subject.lotSize ? `${subject.lotSize.toLocaleString()} sf` : "Unknown"}</dd><dt>Garage</dt><dd>Needs photo/listing verification</dd><dt>Mountain view</dt><dd>Needs on-site/photo verification</dd></dl></div></section>
       <section className="model-summary">
         <div><span>Municipal assessment</span><strong>{money.format(subject.assessedValue)}</strong><small>Screening reference, not a sale comp</small></div><div><span>Model purchase price</span><strong>{money.format(price)}</strong><small>Editable below</small></div><div><span>Monthly cash flow</span><strong className={model.cashFlow >= 0 ? "positive" : "negative"}>{money.format(model.cashFlow / 12)}</strong><small>Before income tax</small></div><div><span>Cash to close</span><strong>{money.format(model.cashToClose)}</strong><small>Down payment + 2% closing</small></div>
       </section>

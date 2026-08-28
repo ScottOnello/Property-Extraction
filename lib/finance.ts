@@ -49,6 +49,7 @@ export type DealAnalysis = {
   price: number; monthlyRent: number; noi: number; capRate: number; dscr: number;
   cashFlow: number; cashOnCash: number; debtYield: number; breakEvenOccupancy: number;
   tenYearIrr: number; equityMultiple: number; cashToClose: number; risk: string; thesis: string;
+  preferenceScore: number;
 };
 
 export function analyzeProperty(property: Property): DealAnalysis {
@@ -90,10 +91,13 @@ export function analyzeProperty(property: Property): DealAnalysis {
   const irrScore = clamp((tenYearIrr - 4) / 16 * 100);
   const financialScore = Math.round(capScore * .25 + dscrScore * .25 + cocScore * .2 + irrScore * .3);
   const ageScore = property.yearBuilt ? clamp((property.yearBuilt - 1950) / 75 * 100) : 45;
-  const dealScore = Math.round(financialScore * .55 + property.locationScore * .25 + property.score * .15 + ageScore * .05);
-  const risk = dscr < 1 ? "Negative leverage" : property.yearBuilt && property.yearBuilt < 1980 ? "Older asset" : capRate < 5 ? "Thin yield" : "Moderate";
+  const yardScore = property.yardPotential === "Strong" ? 100 : property.yardPotential === "Possible" ? 60 : property.yardPotential === "Limited" ? 20 : 0;
+  const preferenceScore = Math.round(yardScore * .35 + (property.inTransitCorridor ? 0 : 100) * .65);
+  const corridorPenalty = property.inTransitCorridor ? 30 : 0;
+  const dealScore = Math.max(0, Math.round(financialScore * .5 + property.locationScore * .18 + property.score * .12 + ageScore * .05 + preferenceScore * .15 - corridorPenalty));
+  const risk = property.inTransitCorridor ? "Transit corridor" : dscr < 1 ? "Negative leverage" : property.yearBuilt && property.yearBuilt < 1980 ? "Older asset" : capRate < 5 ? "Thin yield" : "Moderate";
   const thesis = financialScore >= 70 ? "Best modeled return profile" : property.locationScore >= 70 ? "Location-led opportunity" : property.score >= 70 ? "Strong sourcing signal" : "Requires price or income improvement";
-  return { property, rank: 0, dealScore, financialScore, price, monthlyRent, noi, capRate, dscr, cashFlow, cashOnCash, debtYield, breakEvenOccupancy, tenYearIrr, equityMultiple, cashToClose, risk, thesis };
+  return { property, rank: 0, dealScore, financialScore, preferenceScore, price, monthlyRent, noi, capRate, dscr, cashFlow, cashOnCash, debtYield, breakEvenOccupancy, tenYearIrr, equityMultiple, cashToClose, risk, thesis };
 }
 
 export function rankProperties(properties: Property[]) {
