@@ -21,6 +21,8 @@ Open any prospect and choose **Analyze this deal** to model purchase price, rent
 
 The **Deal rankings** view adds parcel aerial imagery, 10-year levered IRR, equity multiple, debt yield, break-even occupancy, cash-on-cash return, DSCR, cap rate, and a risk-adjusted rank for the complete fourplex dataset. Its strict A–F location grade uses distance to Downtown, Midtown, U-Med, the airport, and JBER, including an outer-area penalty. It does not use demographic characteristics.
 
+Buy Lab also includes a decision-first summary, a house-hack/owner-occupant rent-offset model, a graphical occupancy break-even marker, and a dated Zillow market pulse. Zillow asking prices and advertised rents are labeled as market anchors and never substituted for verified closed-sale comps.
+
 ## What it produces
 
 - `all_fourplexes.csv` — every current parcel returned with four living units.
