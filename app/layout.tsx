@@ -5,7 +5,7 @@ import "./rankings.css";
 import "./interpretive.css";
 import "./preferences.css";
 
-export const metadata: Metadata = { title: "Property Extraction", description: "Private Anchorage fourplex opportunity intelligence" };
+export const metadata: Metadata = { title: "Property Extraction", description: "Private Alaska multifamily acquisition intelligence", icons: { icon: "/favicon.svg" } };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <html lang="en"><body>{children}</body></html>;
