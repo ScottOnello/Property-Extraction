@@ -1,4 +1,5 @@
 import { getPropertyData } from "@/lib/data";
+import { getSparkListingPhotos } from "@/lib/spark";
 import AnalysisClient from "./AnalysisClient";
 
 export default async function AnalyzePage({ searchParams }: { searchParams: Promise<{ parcel?: string }> }) {
@@ -11,5 +12,6 @@ export default async function AnalyzePage({ searchParams }: { searchParams: Prom
     .sort((a, b) => Math.abs(a.assessedValue - subject.assessedValue) - Math.abs(b.assessedValue - subject.assessedValue))
     .slice(0, 5)
     .map((property) => ({ address: property.address, value: property.assessedValue, yearBuilt: property.yearBuilt, parcelId: property.parcelId }));
-  return <AnalysisClient subject={subject} references={references} />;
+  const listingMedia = await getSparkListingPhotos(subject.address);
+  return <AnalysisClient subject={subject} references={references} listingMedia={listingMedia} />;
 }

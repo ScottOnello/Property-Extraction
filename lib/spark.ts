@@ -37,6 +37,13 @@ export type SparkListingQuery = {
   expand?: string[];
 };
 
+export type SparkListingPhoto = {
+  id: string;
+  caption: string;
+  thumbnailUrl: string;
+  imageUrl: string;
+};
+
 function configuration() {
   const feedId = process.env.SPARK_API_FEED_ID?.trim();
   const accessToken = process.env.SPARK_ACCESS_TOKEN?.trim();
@@ -70,6 +77,14 @@ async function sparkGet<T>(path: string, parameters: URLSearchParams) {
   return payload.D;
 }
 
+function usableImageUrl(value: unknown) {
+  const url = String(value ?? "").trim();
+  if (!/^https?:\/\//i.test(url)) return "";
+  // Spark documentation examples include HTTP photo URLs. Serve the secure
+  // equivalent when available so deployed pages do not trigger mixed content.
+  return url.replace(/^http:\/\//i, "https://");
+}
+
 /**
  * Query current Alaska MLS listings through the approved private feed.
  * Keep filters narrow for interactive analysis and use ModificationTimestamp
@@ -94,4 +109,50 @@ export async function getSparkListings(query: SparkListingQuery = {}) {
 export async function verifySparkConnection() {
   const result = await sparkGet<Record<string, unknown>>("/my/account", new URLSearchParams());
   return result.Results[0] ?? null;
+}
+
+/**
+ * Find the most recently modified MLS record for a municipal property and
+ * return display-ready MLS images. Spark credentials stay on the server.
+ */
+export async function getSparkListingPhotos(address: string) {
+  const normalizedAddress = address.split(",")[0]?.trim();
+  if (!normalizedAddress) return { listingNumber: "", photos: [] as SparkListingPhoto[] };
+
+  try {
+    const escapedAddress = normalizedAddress.replace(/'/g, "''");
+    const listings = await getSparkListings({
+      filter: `UnparsedAddress Eq '${escapedAddress}'`,
+      orderBy: "ModificationTimestamp Desc",
+      limit: 12,
+      select: ["ListingId", "ListingKey", "UnparsedAddress", "ModificationTimestamp"],
+    });
+    const listing = listings.Results[0];
+    if (!listing) return { listingNumber: "", photos: [] as SparkListingPhoto[] };
+
+    const standard = listing.StandardFields ?? {};
+    // Photo URLs are a sub-resource of Spark's internal Listing.Id, not the
+    // human-facing MLS number. Spark returns it as Id on a listings response.
+    const id = String(listing.Id ?? listing.ListingKey ?? standard.ListingKey ?? "").trim();
+    const listingNumber = String(standard.ListingId ?? listing.ListingKey ?? "").trim();
+    if (!id) return { listingNumber, photos: [] as SparkListingPhoto[] };
+
+    const result = await sparkGet<Record<string, unknown>>(`/listings/${encodeURIComponent(id)}/photos`, new URLSearchParams());
+    const photos = result.Results.map((photo) => {
+      const imageUrl = usableImageUrl(photo.Uri1280 ?? photo.Uri1024 ?? photo.Uri800 ?? photo.Uri640 ?? photo.Uri300);
+      const thumbnailUrl = usableImageUrl(photo.UriThumb ?? photo.Uri300 ?? imageUrl);
+      return {
+        id: String(photo.Id ?? imageUrl),
+        caption: String(photo.Caption ?? "").trim(),
+        thumbnailUrl,
+        imageUrl,
+      };
+    }).filter((photo) => Boolean(photo.imageUrl));
+
+    return { listingNumber, photos };
+  } catch {
+    // A missing listing or a feed that restricts photos should not prevent the
+    // deal screen from loading. The UI keeps its Street View fallback instead.
+    return { listingNumber: "", photos: [] as SparkListingPhoto[] };
+  }
 }
