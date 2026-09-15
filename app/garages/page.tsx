@@ -1,4 +1,5 @@
 import { getGarageDeals } from "@/lib/garage-data";
+import GarageDealsMap from "./GarageDealsMap";
 import "./garages.css";
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
@@ -25,6 +26,7 @@ export default async function GarageDealsPage() {
         {!deals.length && <div className="garage-empty"><h2>No MLS garage records available</h2><p>The feed returned no multi-family records with a reported garage space. Try again after the next data refresh.</p></div>}
         <p className="garage-note">This tab uses the MLS `GarageSpaces` field. It excludes carport-only properties and does not infer a garage from photos, aerial imagery, or municipal parcel data. Verify all facts, availability, and price before an offer.</p>
       </section>
+      <GarageDealsMap deals={deals}/>
     </main>
   </div>;
 }

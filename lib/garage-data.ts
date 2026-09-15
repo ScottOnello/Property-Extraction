@@ -3,7 +3,7 @@ import { unstable_cache } from "next/cache";
 import { getSparkListings } from "@/lib/spark";
 
 const SELECT = [
-  "ListingId", "ListingKey", "UnparsedAddress", "City", "StateOrProvince", "PostalCode",
+  "ListingId", "ListingKey", "UnparsedAddress", "City", "StateOrProvince", "PostalCode", "Latitude", "Longitude",
   "NumberOfUnitsTotal", "GarageSpaces", "CarportSpaces", "PropertyType", "PropertySubType",
   "StandardStatus", "MlsStatus", "ListPrice", "ClosePrice", "CloseDate", "ModificationTimestamp",
   "YearBuilt", "BuildingAreaTotal", "LivingArea", "SubdivisionName", "BedroomsTotal",
@@ -18,6 +18,8 @@ export type GarageDeal = {
   City: string;
   State: string;
   Postal_Code: string;
+  Latitude: number | null;
+  Longitude: number | null;
   Units: number | null;
   Garage_Spaces: number;
   Carport_Spaces: number | null;
@@ -54,6 +56,10 @@ const dateOnly = (value: unknown) => {
   return parsed && !Number.isNaN(parsed.valueOf()) ? parsed.toISOString().slice(0, 10) : "";
 };
 const addressKey = (value: string, city: string) => `${value.toUpperCase().replace(/[^A-Z0-9]/g, "")}|${city.toUpperCase()}`;
+const coordinateOrNull = (value: unknown, minimum: number, maximum: number) => {
+  const coordinate = numberOrNull(value);
+  return coordinate !== null && coordinate >= minimum && coordinate <= maximum ? coordinate : null;
+};
 
 function toGarageDeal(row: Row): GarageDeal | null {
   const listingId = text(row.ListingId ?? row.ListingKey);
@@ -67,6 +73,8 @@ function toGarageDeal(row: Row): GarageDeal | null {
     City: text(row.City),
     State: text(row.StateOrProvince) || "AK",
     Postal_Code: text(row.PostalCode),
+    Latitude: coordinateOrNull(row.Latitude, -90, 90),
+    Longitude: coordinateOrNull(row.Longitude, -180, 180),
     Units: numberOrNull(row.NumberOfUnitsTotal),
     Garage_Spaces: garageSpaces,
     Carport_Spaces: numberOrNull(row.CarportSpaces),

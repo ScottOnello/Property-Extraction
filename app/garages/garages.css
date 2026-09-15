@@ -201,6 +201,114 @@
   color: var(--muted);
 }
 
+.garage-map-panel {
+  overflow: hidden;
+  margin-top: 18px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: #fff;
+  box-shadow: 0 10px 34px #143b400b;
+}
+
+.garage-map-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  padding: 22px;
+}
+
+.garage-map-toolbar .eyebrow {
+  margin: 0 0 5px;
+}
+
+.garage-map-toolbar h2 {
+  margin: 0;
+  font: 500 25px/1.2 Georgia, serif;
+}
+
+.garage-map-toolbar p:not(.eyebrow) {
+  max-width: 650px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.garage-map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 11px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.garage-map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.garage-map-legend i {
+  width: 9px;
+  height: 9px;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #afc1c1;
+}
+
+.garage-map-active { background: #16aa7d; }
+.garage-map-history { background: #86a2ae; }
+
+.garage-map-count {
+  border-top: 1px solid var(--line);
+  padding: 10px 22px;
+  background: #f8faf9;
+  color: #567075;
+  font-size: 11px;
+}
+
+.garage-map {
+  height: 600px;
+  background: #d8e8e5;
+}
+
+.garage-map .leaflet-control-attribution {
+  font-size: 10px;
+}
+
+.garage-map-popup {
+  display: grid;
+  gap: 4px;
+  min-width: 195px;
+}
+
+.garage-map-popup strong {
+  color: #163c45;
+  font-size: 13px;
+}
+
+.garage-map-popup span {
+  color: #60757a;
+  font-size: 11px;
+}
+
+.garage-map-popup a {
+  margin-top: 5px;
+  color: #087055;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.garage-map-message {
+  margin: 0;
+  padding: 35px 22px;
+  color: var(--muted);
+  text-align: center;
+}
+
 .garage-note {
   margin: 0;
   border-top: 1px solid var(--line);
@@ -223,17 +331,23 @@
   }
 
   .garage-header,
-  .garage-toolbar {
+  .garage-toolbar,
+  .garage-map-toolbar {
     display: block;
   }
 
   .garage-source,
-  .garage-toolbar > span {
+  .garage-toolbar > span,
+  .garage-map-legend {
     margin-top: 18px;
   }
 
   .garage-source {
     width: max-content;
+  }
+
+  .garage-map-legend {
+    justify-content: flex-start;
   }
 }
 
@@ -253,6 +367,10 @@
 
   .garage-table-wrap {
     max-height: none;
+  }
+
+  .garage-map {
+    height: 440px;
   }
 
   .garage-table-wrap th:nth-child(3),
