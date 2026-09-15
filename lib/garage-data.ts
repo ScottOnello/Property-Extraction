@@ -36,7 +36,10 @@ export type GarageDeal = {
   Source_URL: string;
 };
 
-const text = (value: unknown) => String(value ?? "").trim();
+const text = (value: unknown) => {
+  const normalized = String(value ?? "").trim();
+  return normalized === "********" ? "" : normalized;
+};
 const usableUrl = (value: unknown) => {
   const url = text(value);
   return /^https?:\/\//i.test(url) ? url : "";
