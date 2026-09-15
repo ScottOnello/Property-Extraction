@@ -41,10 +41,11 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
   const otherUnits = Math.max(0, units - 1);
   const propertyLabel = units === 4 ? "Fourplex" : units === 6 ? "Sixplex" : `${units}-unit property`;
   const isSixplex = subject.parcelId.startsWith("sixplex-");
-  const recordLabel = isSixplex ? "Matched MLS / assessor record" : "Municipal record";
-  const valueLabel = isSixplex ? "Matched record value" : "Municipal assessment";
+  const isMlsRecord = isSixplex || subject.parcelId.startsWith("mls-");
+  const recordLabel = isSixplex ? "Matched MLS / assessor record" : isMlsRecord ? "MLS record" : "Municipal record";
+  const valueLabel = isSixplex ? "Matched record value" : isMlsRecord ? "MLS price reference" : "Municipal assessment";
   const [price, setPrice] = useState(Math.round(subject.assessedValue));
-  const [monthlyRent, setMonthlyRent] = useState(Math.max(7200, units * 1800));
+  const [monthlyRent, setMonthlyRent] = useState(units * 1800);
   const [taxes, setTaxes] = useState(Math.round(subject.assessedValue * 0.012));
   const [insurance, setInsurance] = useState(4800);
   const [utilities, setUtilities] = useState(7200);
@@ -159,7 +160,7 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
   };
 
   return <div className="app-shell model-app">
-    <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a href="/">← Prospects</a><a className="active" href="#overview">Property overview</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">30-year outlook</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
+    <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a href="/">← Prospects</a><a href="/garages">Garage deals</a><a className="active" href="#overview">Property overview</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">30-year outlook</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
     <main className="workspace model-workspace">
       <header className="portal-header"><div><p className="eyebrow">PROPERTY DETAIL · {isSixplex ? `MLS ${subject.parcelId.slice("sixplex-".length)}` : `PARCEL ${subject.parcelId}`}</p><p className="portal-breadcrumb">Alaska multifamily / Buy Lab</p></div><div className="portal-actions"><a href={streetViewUrl} target="_blank" rel="noreferrer">Street View ↗</a><a className="evidence top-evidence" target="_blank" rel="noreferrer" href={subject.evidenceUrl}>{recordLabel} ↗</a></div></header>
       <nav className="listing-tabs" aria-label="Property sections"><span className="section-label">Jump to</span><a href="#overview">Overview</a><a href="#facts">Facts &amp; features</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">Long-term returns</a><a className="tabs-top" href="#overview">↑ Top</a></nav>

@@ -1,5 +1,6 @@
 import { getPropertyData, type Property } from "@/lib/data";
 import { getSixplexData, type SixplexProspect } from "@/lib/sixplex-data";
+import { getGarageDealByListingId, type GarageDeal } from "@/lib/garage-data";
 import { getSparkListingPhotos } from "@/lib/spark";
 import AnalysisClient from "./AnalysisClient";
 
@@ -54,7 +55,52 @@ function sixplexToProperty(prospect: SixplexProspect): Property {
   };
 }
 
-export default async function AnalyzePage({ searchParams }: { searchParams: Promise<{ parcel?: string; sixplex?: string }> }) {
+function garageDealToProperty(deal: GarageDeal): Property {
+  const priceReference = deal.List_Price ?? deal.Close_Price ?? 0;
+  return {
+    parcelId: `mls-${deal.Listing_Id}`,
+    address: deal.Address,
+    owner: "MLS owner not reported",
+    ownerAddress: "",
+    ownerCity: "",
+    ownerState: "",
+    ownerZip: "",
+    units: deal.Units || 2,
+    buildingArea: deal.Building_Area,
+    garageSpaces: deal.Garage_Spaces,
+    subdivision: deal.Subdivision,
+    deedDate: "",
+    yearsOwned: null,
+    yearBuilt: deal.Year_Built,
+    assessedValue: priceReference,
+    zoning: "",
+    absentee: false,
+    outOfState: false,
+    ownerType: "MLS record",
+    ownerKey: `mls:${deal.Listing_Id}`,
+    baseScore: 0,
+    portfolioBonus: 0,
+    portfolioCount: 1,
+    portfolioUnits: deal.Units || 2,
+    score: 0,
+    reasons: ["MLS-reported garage", `${deal.Garage_Spaces} garage space${deal.Garage_Spaces === 1 ? "" : "s"}`],
+    evidenceUrl: deal.Source_URL || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(deal.Address)}`,
+    aerialUrl: "",
+    latitude: null,
+    longitude: null,
+    locationScore: 0,
+    locationGrade: "Unrated",
+    locationTier: "MLS location not geocoded",
+    locationReasons: ["MLS address loaded", "Municipal geometry not matched"],
+    inTransitCorridor: false,
+    transitCorridor: "Unknown",
+    transitDistanceMiles: null,
+    lotSize: 0,
+    yardPotential: "Unknown",
+  };
+}
+
+export default async function AnalyzePage({ searchParams }: { searchParams: Promise<{ parcel?: string; sixplex?: string; listing?: string }> }) {
   const query = await searchParams;
   let subject: Property | undefined;
   let references: { address: string; value: number; yearBuilt: number | null; parcelId: string }[] = [];
@@ -64,6 +110,11 @@ export default async function AnalyzePage({ searchParams }: { searchParams: Prom
     const prospect = [...confirmed, ...review].find((item) => item.MLS_Number === query.sixplex);
     if (prospect) subject = sixplexToProperty(prospect);
     else return <main className="workspace"><h1>Sixplex record unavailable</h1><p>Return to the sixplex list and select the property again.</p></main>;
+  }
+  if (query.listing) {
+    const garageDeal = await getGarageDealByListingId(query.listing);
+    if (garageDeal) subject = garageDealToProperty(garageDeal);
+    else return <main className="workspace"><h1>MLS garage record unavailable</h1><p>Return to Garage Deals and select the property again.</p></main>;
   }
 
   if (!subject) {
