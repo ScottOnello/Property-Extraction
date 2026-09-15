@@ -121,35 +121,57 @@ export async function getSparkListingPhotos(address: string) {
 
   try {
     const escapedAddress = normalizedAddress.replace(/'/g, "''");
-    const listings = await getSparkListings({
-      filter: `UnparsedAddress Eq '${escapedAddress}'`,
-      orderBy: "ModificationTimestamp Desc",
-      limit: 12,
-      select: ["ListingId", "ListingKey", "UnparsedAddress", "ModificationTimestamp"],
+    // StreetAddress is Spark's address-aware search field. It finds historic
+    // records even when an older listing used ROAD instead of RD or had a
+    // slightly different formatted address than the assessor record.
+    const primary = await getSparkListings({
+      filter: `StreetAddress Eq '${escapedAddress}'`,
+      orderBy: "-ModificationTimestamp",
+      limit: 25,
+      select: ["ListingId", "ListingKey", "UnparsedAddress", "ModificationTimestamp", "CloseDate"],
     });
-    const listing = listings.Results[0];
-    if (!listing) return { listingNumber: "", photos: [] as SparkListingPhoto[] };
+    const pieces = normalizedAddress.replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/);
+    const fallbackTerm = pieces.slice(0, 2).join(" ").replace(/'/g, "''");
+    const fallback = primary.Results.length || !fallbackTerm ? { Results: [] as SparkListing[] } : await getSparkListings({
+      filter: `UnparsedAddress Eq contains('${fallbackTerm}')`,
+      orderBy: "-ModificationTimestamp",
+      limit: 25,
+      select: ["ListingId", "ListingKey", "UnparsedAddress", "ModificationTimestamp", "CloseDate"],
+    });
+    const candidates = [...primary.Results, ...fallback.Results]
+      .filter((listing, index, entries) => {
+        const id = String(listing.Id ?? listing.ListingKey ?? "");
+        return id && entries.findIndex((entry) => String(entry.Id ?? entry.ListingKey ?? "") === id) === index;
+      })
+      .slice(0, 12);
 
-    const standard = listing.StandardFields ?? {};
-    // Photo URLs are a sub-resource of Spark's internal Listing.Id, not the
-    // human-facing MLS number. Spark returns it as Id on a listings response.
-    const id = String(listing.Id ?? listing.ListingKey ?? standard.ListingKey ?? "").trim();
-    const listingNumber = String(standard.ListingId ?? listing.ListingKey ?? "").trim();
-    if (!id) return { listingNumber, photos: [] as SparkListingPhoto[] };
+    for (const listing of candidates) {
+      const standard = listing.StandardFields ?? {};
+      // Photo URLs are a sub-resource of Spark's internal Listing.Id, not the
+      // human-facing MLS number. Spark returns it as Id on a listings response.
+      const id = String(listing.Id ?? listing.ListingKey ?? standard.ListingKey ?? "").trim();
+      const listingNumber = String(standard.ListingId ?? listing.ListingKey ?? "").trim();
+      if (!id) continue;
+      try {
+        const result = await sparkGet<Record<string, unknown>>(`/listings/${encodeURIComponent(id)}/photos`, new URLSearchParams());
+        const photos = result.Results.map((photo) => {
+          const imageUrl = usableImageUrl(photo.Uri1280 ?? photo.Uri1024 ?? photo.Uri800 ?? photo.Uri640 ?? photo.Uri300);
+          const thumbnailUrl = usableImageUrl(photo.UriThumb ?? photo.Uri300 ?? imageUrl);
+          return {
+            id: String(photo.Id ?? imageUrl),
+            caption: String(photo.Caption ?? "").trim(),
+            thumbnailUrl,
+            imageUrl,
+          };
+        }).filter((photo) => Boolean(photo.imageUrl));
+        if (photos.length) return { listingNumber, photos };
+      } catch {
+        // A historical record can be retained while its photos are restricted.
+        // Continue through the remaining listing history instead of giving up.
+      }
+    }
 
-    const result = await sparkGet<Record<string, unknown>>(`/listings/${encodeURIComponent(id)}/photos`, new URLSearchParams());
-    const photos = result.Results.map((photo) => {
-      const imageUrl = usableImageUrl(photo.Uri1280 ?? photo.Uri1024 ?? photo.Uri800 ?? photo.Uri640 ?? photo.Uri300);
-      const thumbnailUrl = usableImageUrl(photo.UriThumb ?? photo.Uri300 ?? imageUrl);
-      return {
-        id: String(photo.Id ?? imageUrl),
-        caption: String(photo.Caption ?? "").trim(),
-        thumbnailUrl,
-        imageUrl,
-      };
-    }).filter((photo) => Boolean(photo.imageUrl));
-
-    return { listingNumber, photos };
+    return { listingNumber: "", photos: [] as SparkListingPhoto[] };
   } catch {
     // A missing listing or a feed that restricts photos should not prevent the
     // deal screen from loading. The UI keeps its Street View fallback instead.

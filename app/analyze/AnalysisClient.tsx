@@ -59,6 +59,15 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
     : `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
   const activeMlsPhoto = listingMedia.photos[activePhoto] ?? null;
+  const primaryImage = activeMlsPhoto?.imageUrl || subject.aerialUrl;
+  const propertyFacts = [
+    ["Home type", "Fourplex"],
+    ["Year built", subject.yearBuilt ? String(subject.yearBuilt) : "Unknown"],
+    ["Lot size", subject.lotSize ? `${subject.lotSize.toLocaleString()} sq ft` : "Unknown"],
+    ["Zoning", subject.zoning || "Unknown"],
+    ["Ownership", subject.yearsOwned ? `${subject.yearsOwned} years` : "Verify deed"],
+    ["Owner profile", subject.ownerType],
+  ];
 
   const model = useMemo(() => {
     const loan = price * (1 - scenario.down / 100);
@@ -94,32 +103,29 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
 
   const maxEquity = Math.max(...model.years.map((row) => row.equity), 1);
   const maxCashFlow = Math.max(...model.years.map((row) => Math.abs(row.cashFlow)), 1);
+  const valueLow = Math.round(subject.assessedValue * 0.92 / 1000) * 1000;
+  const valueHigh = Math.round(subject.assessedValue * 1.08 / 1000) * 1000;
   const addComp = () => { setComps([...comps, { id: nextCompId, address: "", soldPrice: 0, saleDate: "", sqft: 0, units: 4 }]); setNextCompId(nextCompId + 1); };
   const updateComp = (id: number, field: keyof Comp, value: string | number) => setComps(comps.map((comp) => comp.id === id ? { ...comp, [field]: value } : comp));
 
   return <div className="app-shell model-app">
     <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a href="/">← Prospects</a><a className="active" href={`/analyze?parcel=${subject.parcelId}`}>Buy Lab</a><a href="#comps">Comparable sales</a><a href="#returns">30-year outlook</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
     <main className="workspace model-workspace">
-      <header><div><p className="eyebrow">INTERACTIVE ACQUISITION MODEL · PARCEL {subject.parcelId}</p><h1>{subject.address}</h1><p className="muted">Compare ways to buy, validate value with comps, and see the long-term financial tradeoffs.</p></div><a className="evidence top-evidence" target="_blank" rel="noreferrer" href={subject.evidenceUrl}>Municipal record ↗</a></header>
-      <section className="subject-visual"><div className="subject-aerial">{subject.aerialUrl ? <img src={subject.aerialUrl} alt={`Aerial view of ${subject.address}`}/> : <div className="image-missing">Aerial imagery unavailable</div>}<span>Esri World Imagery · parcel vicinity</span></div><div className="location-card"><p className="eyebrow">HARSH LOCATION GRADE</p><strong className={`grade grade-${subject.locationGrade.toLowerCase()}`}>{subject.locationGrade}</strong><h2>{subject.locationScore}/100</h2><p>{subject.locationTier}</p><div className="location-badges">{subject.locationReasons.map((reason) => <span key={reason}>{reason}</span>)}</div><small>Strict access score only. It does not use demographics or make claims about neighborhood residents.</small></div></section>
-      <section className="photo-transit-strip">
-        <div className="visual-reminder">
-          <p className="eyebrow">VISUAL PROPERTY REMINDER</p>
-          {activeMlsPhoto ? <>
-            <div className="mls-photo-frame"><img src={activeMlsPhoto.imageUrl} alt={activeMlsPhoto.caption || `MLS photo of ${subject.address}`}/><span>MLS {listingMedia.listingNumber || "listing"} · photo {activePhoto + 1} of {listingMedia.photos.length}</span></div>
-            {listingMedia.photos.length > 1 && <div className="photo-thumbs" aria-label="Choose MLS photo">{listingMedia.photos.slice(0, 8).map((photo, index) => <button type="button" className={index === activePhoto ? "selected" : ""} onClick={() => setActivePhoto(index)} aria-label={`Show MLS photo ${index + 1}`} key={photo.id}><img src={photo.thumbnailUrl || photo.imageUrl} alt=""/></button>)}</div>}
-            <p>{activeMlsPhoto.caption || "MLS photo supplied through your private Alaska MLS access."}</p>
-          </> : <>
-            <h3>{photoSource?.photoCount ? `${photoSource.photoCount} public listing photos found` : "No MLS photo currently available"}</h3>
-            <p>{photoSource?.photoCount ? `A matching ${photoSource.source} is available. Open it to review interiors and verify garage, yard, and view claims.` : "This MLS record has no displayable photo match, so use Street View and the aerial image as the visual reminder."}</p>
-          </>}
-          <div className="visual-links"><a className="primary" href={streetViewUrl} target="_blank" rel="noreferrer">Open Street View ↗</a><a href={mapsUrl} target="_blank" rel="noreferrer">Open Google Maps ↗</a>{!activeMlsPhoto && <a href={photoSource?.url ?? zillowSearch} target="_blank" rel="noreferrer">{photoSource?.photoCount ? "Open photo gallery ↗" : "Search public photos ↗"}</a>}</div>
-          <small>MLS images are displayed only when Alaska MLS returns them to your private feed; do not reuse them outside the MLS rules.</small>
+      <header className="portal-header"><div><p className="eyebrow">PROPERTY DETAIL · PARCEL {subject.parcelId}</p><p className="portal-breadcrumb">Anchorage multifamily / Buy Lab</p></div><div className="portal-actions"><a href={streetViewUrl} target="_blank" rel="noreferrer">Street View ↗</a><a className="evidence top-evidence" target="_blank" rel="noreferrer" href={subject.evidenceUrl}>Municipal record ↗</a></div></header>
+      <nav className="listing-tabs" aria-label="Property sections"><a href="#overview">Overview</a><a href="#facts">Facts &amp; features</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">Long-term returns</a></nav>
+      <section id="overview" className="listing-hero">
+        <div className="listing-gallery">
+          <div className="listing-primary-image">{primaryImage ? <img src={primaryImage} alt={activeMlsPhoto?.caption || `Property view of ${subject.address}`}/> : <div className="image-missing">Property imagery unavailable</div>}<span>{activeMlsPhoto ? `MLS listing ${listingMedia.listingNumber || "photo"}` : "Aerial parcel view"}</span></div>
+          {listingMedia.photos.length > 1 && <div className="listing-photo-rail" aria-label="MLS listing photos">{listingMedia.photos.slice(0, 7).map((photo, index) => <button type="button" className={index === activePhoto ? "selected" : ""} onClick={() => setActivePhoto(index)} aria-label={`Show listing photo ${index + 1}`} key={photo.id}><img src={photo.thumbnailUrl || photo.imageUrl} alt=""/></button>)}</div>}
+          {!activeMlsPhoto && <div className="listing-gallery-empty"><strong>Historical MLS photos</strong><span>We are checking the property’s prior MLS records.</span><a href={photoSource?.url ?? zillowSearch} target="_blank" rel="noreferrer">Search public photo history ↗</a></div>}
         </div>
-        <div className={subject.inTransitCorridor ? "transit-alert fail" : "transit-alert pass"}><span>{subject.inTransitCorridor ? "AVOID" : "PASS"}</span><h3>{subject.inTransitCorridor ? `Within ¼ mile of ${subject.transitCorridor}` : "Outside modeled transit corridors"}</h3><p>{subject.transitDistanceMiles === null ? "Distance unavailable" : `${subject.transitDistanceMiles.toFixed(2)} miles to nearest identified corridor (${subject.transitCorridor}).`}</p></div>
-        <div className="preference-check"><p className="eyebrow">YOUR PROPERTY PREFERENCES</p><dl><dt>Backyard potential</dt><dd className={subject.yardPotential === "Strong" ? "positive" : ""}>{subject.yardPotential}</dd><dt>Lot size</dt><dd>{subject.lotSize ? `${subject.lotSize.toLocaleString()} sf` : "Unknown"}</dd><dt>Garage</dt><dd>Needs photo/listing verification</dd><dt>Mountain view</dt><dd>Needs on-site/photo verification</dd></dl></div>
+        <article className="listing-summary-card"><p className="eyebrow">INVESTMENT PROPERTY</p><h1>{subject.address}</h1><p className="listing-location">Anchorage, Alaska · Fourplex</p><div className="listing-facts"><span>4 units</span><span>{subject.yearBuilt ? `Built ${subject.yearBuilt}` : "Year unknown"}</span><span>{subject.lotSize ? `${subject.lotSize.toLocaleString()} sq ft lot` : "Lot size unknown"}</span></div><div className="listing-value"><div><span>Municipal assessment</span><strong>{money.format(subject.assessedValue)}</strong><small>Screening reference, not a market price</small></div><div><span>Planning range</span><b>{money.format(valueLow)}–{money.format(valueHigh)}</b><small>±8% assessment sensitivity</small></div></div><div className="listing-cta"><a className="primary" href="#deal-analysis">Run deal analysis</a><a href={mapsUrl} target="_blank" rel="noreferrer">Map &amp; directions ↗</a></div></article>
       </section>
-      <section className="model-summary">
+      <section id="facts" className="portal-detail-grid">
+        <article className="portal-card"><div className="portal-card-heading"><div><p className="eyebrow">HOME DETAILS</p><h2>Facts and features</h2></div><span className="data-label">Municipal record</span></div><dl className="portal-fact-list">{propertyFacts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><div className="detail-callouts"><div><span>Backyard potential</span><strong className={subject.yardPotential === "Strong" ? "positive" : ""}>{subject.yardPotential}</strong></div><div><span>Transit screen</span><strong className={subject.inTransitCorridor ? "negative" : "positive"}>{subject.inTransitCorridor ? "Near corridor" : "Outside corridor"}</strong></div><div><span>Location score</span><strong>{subject.locationScore}/100 · {subject.locationGrade}</strong></div></div></article>
+        <article className="portal-card ownership-card"><div className="portal-card-heading"><div><p className="eyebrow">OWNERSHIP &amp; VALUE</p><h2>What to verify next</h2></div></div><ol className="property-timeline"><li><span>Acquired</span><strong>{subject.deedDate || "Deed date unavailable"}</strong><small>{subject.yearsOwned ? `${subject.yearsOwned} years of recorded ownership` : "Confirm through JOC / recorder"}</small></li><li><span>Current assessment</span><strong>{money.format(subject.assessedValue)}</strong><small>Use as a triage reference, not a comp</small></li><li><span>Due diligence</span><strong>Verify leases, condition, and title</strong><small>Owner motivation is never inferred from a public record</small></li></ol></article>
+      </section>
+      <section id="deal-analysis" className="model-summary">
         <div><span>Municipal assessment</span><strong>{money.format(subject.assessedValue)}</strong><small>Screening reference, not a sale comp</small></div><div><span>Model purchase price</span><strong>{money.format(price)}</strong><small>Editable below</small></div><div><span>Monthly cash flow</span><strong className={model.cashFlow >= 0 ? "positive" : "negative"}>{money.format(model.cashFlow / 12)}</strong><small>Before income tax</small></div><div><span>Cash to close</span><strong>{money.format(model.cashToClose)}</strong><small>Down payment + 2% closing</small></div>
       </section>
       <section className={`decision-banner ${model.dscr >= 1.2 && model.tenYearIrr >= 12 ? "decision-go" : model.dscr < 1 || model.tenYearIrr < 7 ? "decision-stop" : "decision-review"}`}><div><p className="eyebrow">PLAIN-ENGLISH READ</p><h2>{model.dscr >= 1.2 && model.tenYearIrr >= 12 ? "Worth deeper due diligence" : model.dscr < 1 || model.tenYearIrr < 7 ? "Do not pursue at these assumptions" : "Negotiate or improve the income"}</h2></div><div className="decision-reasons"><span>{model.cashFlow >= 0 ? "✓" : "×"} {model.cashFlow >= 0 ? "Positive monthly cash flow" : "Negative monthly cash flow"}</span><span>{model.dscr >= 1.2 ? "✓" : "×"} DSCR {model.dscr.toFixed(2)}×</span><span>{model.tenYearIrr >= 12 ? "✓" : "×"} 10-year IRR {model.tenYearIrr.toFixed(1)}%</span><span>{model.breakEvenOccupancy <= 90 ? "✓" : "×"} Break-even occupancy {model.breakEvenOccupancy.toFixed(1)}%</span></div></section>

@@ -5,6 +5,7 @@ import "./rankings.css";
 import "./interpretive.css";
 import "./preferences.css";
 import "./visual-reminder.css";
+import "./portal-listing.css";
 
 export const metadata: Metadata = { title: "Property Extraction", description: "Private Alaska multifamily acquisition intelligence", icons: { icon: "/favicon.svg" } };
 
