@@ -44,6 +44,40 @@ export type SparkListingPhoto = {
   imageUrl: string;
 };
 
+export type SparkListingFacts = {
+  buildingArea: number | null;
+  garageSpaces: number | null;
+  carportSpaces: number | null;
+  subdivision: string;
+  bedrooms: number | null;
+  bathrooms: number | null;
+};
+
+export type SparkListingMedia = {
+  listingNumber: string;
+  photos: SparkListingPhoto[];
+  facts: SparkListingFacts;
+};
+
+const EMPTY_FACTS: SparkListingFacts = { buildingArea: null, garageSpaces: null, carportSpaces: null, subdivision: "", bedrooms: null, bathrooms: null };
+
+function numberOrNull(value: unknown) {
+  if (value === null || value === undefined || value === "" || value === "********") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function listingFacts(fields: Record<string, unknown>): SparkListingFacts {
+  return {
+    buildingArea: numberOrNull(fields.BuildingAreaTotal) ?? numberOrNull(fields.LivingArea),
+    garageSpaces: numberOrNull(fields.GarageSpaces),
+    carportSpaces: numberOrNull(fields.CarportSpaces),
+    subdivision: String(fields.SubdivisionName ?? "").trim(),
+    bedrooms: numberOrNull(fields.BedroomsTotal),
+    bathrooms: numberOrNull(fields.BathroomsTotalInteger) ?? numberOrNull(fields.BathroomsFull),
+  };
+}
+
 function configuration() {
   const feedId = process.env.SPARK_API_FEED_ID?.trim();
   const accessToken = process.env.SPARK_ACCESS_TOKEN?.trim();
@@ -117,7 +151,7 @@ export async function verifySparkConnection() {
  */
 export async function getSparkListingPhotos(address: string) {
   const normalizedAddress = address.split(",")[0]?.trim();
-  if (!normalizedAddress) return { listingNumber: "", photos: [] as SparkListingPhoto[] };
+  if (!normalizedAddress) return { listingNumber: "", photos: [] as SparkListingPhoto[], facts: EMPTY_FACTS } satisfies SparkListingMedia;
 
   try {
     const escapedAddress = normalizedAddress.replace(/'/g, "''");
@@ -128,7 +162,7 @@ export async function getSparkListingPhotos(address: string) {
       filter: `StreetAddress Eq '${escapedAddress}'`,
       orderBy: "-ModificationTimestamp",
       limit: 25,
-      select: ["ListingId", "ListingKey", "UnparsedAddress", "ModificationTimestamp", "CloseDate"],
+      select: ["ListingId", "ListingKey", "UnparsedAddress", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
     });
     const pieces = normalizedAddress.replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/);
     const fallbackTerm = pieces.slice(0, 2).join(" ").replace(/'/g, "''");
@@ -136,7 +170,7 @@ export async function getSparkListingPhotos(address: string) {
       filter: `UnparsedAddress Eq contains('${fallbackTerm}')`,
       orderBy: "-ModificationTimestamp",
       limit: 25,
-      select: ["ListingId", "ListingKey", "UnparsedAddress", "ModificationTimestamp", "CloseDate"],
+      select: ["ListingId", "ListingKey", "UnparsedAddress", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
     });
     const candidates = [...primary.Results, ...fallback.Results]
       .filter((listing, index, entries) => {
@@ -145,8 +179,15 @@ export async function getSparkListingPhotos(address: string) {
       })
       .slice(0, 12);
 
+    let bestFacts = EMPTY_FACTS;
+    let bestListingNumber = "";
     for (const listing of candidates) {
       const standard = listing.StandardFields ?? {};
+      const candidateFacts = listingFacts(standard);
+      if (!bestListingNumber) {
+        bestListingNumber = String(standard.ListingId ?? listing.ListingKey ?? "").trim();
+        bestFacts = candidateFacts;
+      }
       // Photo URLs are a sub-resource of Spark's internal Listing.Id, not the
       // human-facing MLS number. Spark returns it as Id on a listings response.
       const id = String(listing.Id ?? listing.ListingKey ?? standard.ListingKey ?? "").trim();
@@ -164,17 +205,17 @@ export async function getSparkListingPhotos(address: string) {
             imageUrl,
           };
         }).filter((photo) => Boolean(photo.imageUrl));
-        if (photos.length) return { listingNumber, photos };
+        if (photos.length) return { listingNumber, photos, facts: candidateFacts } satisfies SparkListingMedia;
       } catch {
         // A historical record can be retained while its photos are restricted.
         // Continue through the remaining listing history instead of giving up.
       }
     }
 
-    return { listingNumber: "", photos: [] as SparkListingPhoto[] };
+    return { listingNumber: bestListingNumber, photos: [] as SparkListingPhoto[], facts: bestFacts } satisfies SparkListingMedia;
   } catch {
     // A missing listing or a feed that restricts photos should not prevent the
     // deal screen from loading. The UI keeps its Street View fallback instead.
-    return { listingNumber: "", photos: [] as SparkListingPhoto[] };
+    return { listingNumber: "", photos: [] as SparkListingPhoto[], facts: EMPTY_FACTS } satisfies SparkListingMedia;
   }
 }

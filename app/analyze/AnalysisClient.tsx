@@ -3,7 +3,7 @@
 
 import { useMemo, useState } from "react";
 import type { Property } from "@/lib/data";
-import type { SparkListingPhoto } from "@/lib/spark";
+import type { SparkListingMedia } from "@/lib/spark";
 import { irr } from "@/lib/finance";
 import { PUBLIC_PHOTO_SOURCES, ZILLOW_MARKET_PULSE } from "@/lib/market";
 
@@ -28,19 +28,19 @@ function payment(principal: number, annualRate: number, years: number) {
 function balance(principal: number, annualRate: number, years: number, paidMonths: number) {
   const rate = annualRate / 1200;
   const monthly = payment(principal, annualRate, years);
-  return rate ? principal * Math.pow(1 + rate, paidMonths) - monthly * (Math.pow(1 + rate, paidMonths) - 1) / rate : principal - monthly * paidMonths;
+  const monthsPaid = Math.max(0, Math.min(years * 12, paidMonths));
+  return rate ? principal * Math.pow(1 + rate, monthsPaid) - monthly * (Math.pow(1 + rate, monthsPaid) - 1) / rate : principal - monthly * monthsPaid;
 }
 
 function Num({ label, value, onChange, suffix }: { label: string; value: number; onChange: (value: number) => void; suffix?: string }) {
   return <label className="model-field"><span>{label}</span><div><input type="number" value={value} onChange={(event) => onChange(Number(event.target.value))}/>{suffix && <i>{suffix}</i>}</div></label>;
 }
 
-export default function AnalysisClient({ subject, references, listingMedia }: { subject: Property; references: Reference[]; listingMedia: { listingNumber: string; photos: SparkListingPhoto[] } }) {
+export default function AnalysisClient({ subject, references, listingMedia }: { subject: Property; references: Reference[]; listingMedia: SparkListingMedia }) {
   const units = subject.units || 4;
   const otherUnits = Math.max(0, units - 1);
   const propertyLabel = units === 4 ? "Fourplex" : units === 6 ? "Sixplex" : `${units}-unit property`;
   const isSixplex = subject.parcelId.startsWith("sixplex-");
-  const buyLabHref = isSixplex ? `/analyze?sixplex=${encodeURIComponent(subject.parcelId.slice("sixplex-".length))}` : `/analyze?parcel=${subject.parcelId}`;
   const recordLabel = isSixplex ? "Matched MLS / assessor record" : "Municipal record";
   const valueLabel = isSixplex ? "Matched record value" : "Municipal assessment";
   const [price, setPrice] = useState(Math.round(subject.assessedValue));
@@ -51,9 +51,20 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
   const [vacancy, setVacancy] = useState(5);
   const [maintenance, setMaintenance] = useState(5);
   const [management, setManagement] = useState(8);
+  const [capex, setCapex] = useState(5);
+  const [otherExpenses, setOtherExpenses] = useState(0);
   const [appreciation, setAppreciation] = useState(3);
   const [rentGrowth, setRentGrowth] = useState(3);
+  const [expenseGrowth, setExpenseGrowth] = useState(2.5);
   const [active, setActive] = useState(0);
+  const [downPayment, setDownPayment] = useState(scenarios[0].down);
+  const [interestRate, setInterestRate] = useState(scenarios[0].rate);
+  const [amortizationYears, setAmortizationYears] = useState(scenarios[0].years);
+  const [closingCostPct, setClosingCostPct] = useState(2);
+  const [loanPointsPct, setLoanPointsPct] = useState(0);
+  const [furnishedUnits, setFurnishedUnits] = useState(0);
+  const [furnishingPerUnit, setFurnishingPerUnit] = useState(6500);
+  const [repairReserve, setRepairReserve] = useState(25000);
   const [comps, setComps] = useState<Comp[]>([]);
   const [nextCompId, setNextCompId] = useState(1);
   const [activePhoto, setActivePhoto] = useState(0);
@@ -68,8 +79,15 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
   const activeMlsPhoto = listingMedia.photos[activePhoto] ?? null;
   const primaryImage = activeMlsPhoto?.imageUrl || subject.aerialUrl;
+  const buildingArea = listingMedia.facts.buildingArea ?? subject.buildingArea;
+  const garageSpaces = listingMedia.facts.garageSpaces ?? subject.garageSpaces;
+  const neighborhoodName = listingMedia.facts.subdivision || subject.subdivision || subject.locationTier;
   const propertyFacts = [
     ["Home type", propertyLabel],
+    ["Building area", buildingArea ? `${buildingArea.toLocaleString()} sq ft · MLS reported` : "Not reported"],
+    ["Garage spaces", garageSpaces !== null ? `${garageSpaces} · MLS reported` : "Not reported"],
+    ["Neighborhood / subdivision", neighborhoodName || "Not reported"],
+    ["Beds / baths", listingMedia.facts.bedrooms !== null || listingMedia.facts.bathrooms !== null ? `${listingMedia.facts.bedrooms ?? "—"} beds · ${listingMedia.facts.bathrooms ?? "—"} baths` : "Not reported"],
     ["Year built", subject.yearBuilt ? String(subject.yearBuilt) : "Unknown"],
     ["Lot size", subject.lotSize ? `${subject.lotSize.toLocaleString()} sq ft` : "Unknown"],
     ["Zoning", subject.zoning || "Unknown"],
@@ -78,77 +96,111 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
   ];
 
   const model = useMemo(() => {
-    const loan = price * (1 - scenario.down / 100);
-    const monthlyPI = payment(loan, scenario.rate, scenario.years);
+    const termYears = Math.max(1, Math.min(30, Math.round(amortizationYears || 30)));
+    const safeDownPayment = Math.max(0, Math.min(100, downPayment));
+    const loan = price * (1 - safeDownPayment / 100);
+    const safeInterestRate = Math.max(0, interestRate);
+    const monthlyPI = payment(loan, safeInterestRate, termYears);
     const gross = monthlyRent * 12;
-    const operating = taxes + insurance + utilities + gross * (vacancy + maintenance + management) / 100;
+    const operating = taxes + insurance + utilities + otherExpenses + gross * (vacancy + maintenance + management + capex) / 100;
     const noi = gross - operating;
     const cashFlow = noi - monthlyPI * 12;
-    const cashToClose = price * scenario.down / 100 + price * 0.02;
+    const downPaymentCash = price * safeDownPayment / 100;
+    const closingCosts = price * Math.max(0, closingCostPct) / 100;
+    const loanPoints = loan * Math.max(0, loanPointsPct) / 100;
+    const furnishingCost = Math.max(0, Math.min(units, furnishedUnits)) * Math.max(0, furnishingPerUnit);
+    const safeRepairReserve = Math.max(0, repairReserve);
+    const cashToClose = downPaymentCash + closingCosts + loanPoints + furnishingCost + safeRepairReserve;
     const compValues = comps.filter((comp) => comp.soldPrice > 0).map((comp) => comp.soldPrice);
     const compMedian = compValues.length ? [...compValues].sort((a, b) => a - b)[Math.floor(compValues.length / 2)] : null;
+    let cumulativeCashFlow = 0;
     const years = Array.from({ length: 30 }, (_, index) => {
       const year = index + 1;
       const value = price * Math.pow(1 + appreciation / 100, year);
       const rent = gross * Math.pow(1 + rentGrowth / 100, index);
-      const variable = gross * (vacancy + maintenance + management) / 100 * Math.pow(1 + rentGrowth / 100, index);
-      const fixed = (taxes + insurance + utilities) * Math.pow(1.025, index);
-      const annualCashFlow = rent - variable - fixed - monthlyPI * 12;
-      const endingBalance = balance(loan, scenario.rate, scenario.years, year * 12);
-      return { year, value, equity: value - Math.max(0, endingBalance), cashFlow: annualCashFlow };
+      const variable = gross * (vacancy + maintenance + management + capex) / 100 * Math.pow(1 + rentGrowth / 100, index);
+      const fixed = (taxes + insurance + utilities + otherExpenses) * Math.pow(1 + expenseGrowth / 100, index);
+      const annualDebtService = year <= termYears ? monthlyPI * Math.min(12, Math.max(0, termYears * 12 - index * 12)) : 0;
+      const annualCashFlow = rent - variable - fixed - annualDebtService;
+      cumulativeCashFlow += annualCashFlow;
+      const beginningBalance = Math.max(0, balance(loan, safeInterestRate, termYears, index * 12));
+      const endingBalance = Math.max(0, balance(loan, safeInterestRate, termYears, year * 12));
+      const principalPaid = beginningBalance - endingBalance;
+      const annualInterest = Math.max(0, annualDebtService - principalPaid);
+      const totalPrincipalPaid = loan - endingBalance;
+      const capitalPosition = -cashToClose + cumulativeCashFlow + totalPrincipalPaid;
+      return { year, value, equity: value - endingBalance, cashFlow: annualCashFlow, beginningBalance, endingBalance, principalPaid, annualInterest, annualDebtService, capitalPosition };
     });
-    const tenYearFlows = [-cashToClose, ...years.slice(0, 10).map((row, index) => index === 9 ? row.cashFlow + row.value * .92 - balance(loan, scenario.rate, scenario.years, 120) : row.cashFlow)];
+    const tenYearFlows = [-cashToClose, ...years.slice(0, 10).map((row, index) => index === 9 ? row.cashFlow + row.value * .92 - row.endingBalance : row.cashFlow)];
     const tenYearIrr = irr(tenYearFlows);
     const debtYield = loan ? noi / loan * 100 : 0;
     const breakEvenOccupancy = gross ? (operating - gross * vacancy / 100 + monthlyPI * 12) / gross * 100 : 0;
-    const firstPositiveYear = years.find((row) => row.cashFlow >= 0)?.year ?? null;
+    const capitalBreakEvenYear = years.find((row) => row.capitalPosition >= 0)?.year ?? null;
     const piti = monthlyPI + taxes / 12 + insurance / 12;
     const otherUnitRent = monthlyRent * (otherUnits / units);
     const ownerHousingCost = piti + utilities / 12 - otherUnitRent * (1 - vacancy / 100);
     const fhaSelfSufficiencyMargin = otherUnitRent - piti;
-    return { loan, monthlyPI, gross, operating, noi, cashFlow, cashToClose, compMedian, years, tenYearIrr, debtYield, breakEvenOccupancy, firstPositiveYear, piti, otherUnitRent, ownerHousingCost, fhaSelfSufficiencyMargin, capRate: price ? noi / price * 100 : 0, dscr: monthlyPI ? noi / (monthlyPI * 12) : 0 };
-  }, [price, scenario, monthlyRent, taxes, insurance, utilities, vacancy, maintenance, management, appreciation, rentGrowth, comps, units, otherUnits]);
+    return { loan, monthlyPI, gross, operating, noi, cashFlow, cashToClose, downPaymentCash, closingCosts, loanPoints, furnishingCost, repairReserve: safeRepairReserve, compMedian, years, tenYearIrr, debtYield, breakEvenOccupancy, capitalBreakEvenYear, termYears, piti, otherUnitRent, ownerHousingCost, fhaSelfSufficiencyMargin, capRate: price ? noi / price * 100 : 0, dscr: monthlyPI ? noi / (monthlyPI * 12) : 0 };
+  }, [price, downPayment, interestRate, amortizationYears, closingCostPct, loanPointsPct, furnishedUnits, furnishingPerUnit, repairReserve, monthlyRent, taxes, insurance, utilities, otherExpenses, vacancy, maintenance, management, capex, appreciation, rentGrowth, expenseGrowth, comps, units, otherUnits]);
 
   const maxEquity = Math.max(...model.years.map((row) => row.equity), 1);
   const maxCashFlow = Math.max(...model.years.map((row) => Math.abs(row.cashFlow)), 1);
+  const capitalMin = Math.min(...model.years.map((row) => row.capitalPosition), 0);
+  const capitalMax = Math.max(...model.years.map((row) => row.capitalPosition), 0);
+  const capitalRange = Math.max(1, capitalMax - capitalMin);
+  const capitalY = (value: number) => 205 - (value - capitalMin) / capitalRange * 170;
   const valueLow = Math.round(subject.assessedValue * 0.92 / 1000) * 1000;
   const valueHigh = Math.round(subject.assessedValue * 1.08 / 1000) * 1000;
   const addComp = () => { setComps([...comps, { id: nextCompId, address: "", soldPrice: 0, saleDate: "", sqft: 0, units }]); setNextCompId(nextCompId + 1); };
   const updateComp = (id: number, field: keyof Comp, value: string | number) => setComps(comps.map((comp) => comp.id === id ? { ...comp, [field]: value } : comp));
+  const selectScenario = (index: number) => {
+    const selected = scenarios[index];
+    setActive(index); setDownPayment(selected.down); setInterestRate(selected.rate); setAmortizationYears(selected.years);
+  };
 
   return <div className="app-shell model-app">
     <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a href="/">← Prospects</a><a className="active" href="#overview">Property overview</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">30-year outlook</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
     <main className="workspace model-workspace">
       <header className="portal-header"><div><p className="eyebrow">PROPERTY DETAIL · {isSixplex ? `MLS ${subject.parcelId.slice("sixplex-".length)}` : `PARCEL ${subject.parcelId}`}</p><p className="portal-breadcrumb">Alaska multifamily / Buy Lab</p></div><div className="portal-actions"><a href={streetViewUrl} target="_blank" rel="noreferrer">Street View ↗</a><a className="evidence top-evidence" target="_blank" rel="noreferrer" href={subject.evidenceUrl}>{recordLabel} ↗</a></div></header>
       <nav className="listing-tabs" aria-label="Property sections"><span className="section-label">Jump to</span><a href="#overview">Overview</a><a href="#facts">Facts &amp; features</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">Long-term returns</a><a className="tabs-top" href="#overview">↑ Top</a></nav>
+      <section id="deal-analysis" className="panel capital-overview">
+        <div className="panel-head"><div><p className="eyebrow">START HERE · EDITABLE FINANCING</p><h2>Cash needed and amortization break-even</h2><p>Change the loan, furnishing, and reserve assumptions. The graph includes projected cash flow plus principal paid down through the amortization schedule.</p></div><span className="source-pill">Live model</span></div>
+        <div className="capital-layout">
+          <div className="capital-inputs"><h3>Acquisition inputs</h3><div className="input-grid"><Num label="Purchase price" value={price} onChange={setPrice}/><Num label="Down payment" value={downPayment} onChange={setDownPayment} suffix="%"/><Num label="Interest rate" value={interestRate} onChange={setInterestRate} suffix="%"/><Num label="Amortization" value={amortizationYears} onChange={setAmortizationYears} suffix="years"/><Num label="Buy closing costs" value={closingCostPct} onChange={setClosingCostPct} suffix="%"/><Num label="Loan points" value={loanPointsPct} onChange={setLoanPointsPct} suffix="%"/><Num label="Units to furnish" value={furnishedUnits} onChange={setFurnishedUnits}/><Num label="Furnishing per unit" value={furnishingPerUnit} onChange={setFurnishingPerUnit}/><Num label="Immediate repair reserve" value={repairReserve} onChange={setRepairReserve}/></div></div>
+          <aside className="cash-scope"><p className="eyebrow">ESTIMATED CASH SCOPE</p><h3>{money.format(model.cashToClose)}</h3><dl><dt>Down payment</dt><dd>{money.format(model.downPaymentCash)}</dd><dt>Closing costs</dt><dd>{money.format(model.closingCosts)}</dd><dt>Loan points</dt><dd>{money.format(model.loanPoints)}</dd><dt>Furnishings</dt><dd>{money.format(model.furnishingCost)}</dd><dt>Repair reserve</dt><dd>{money.format(model.repairReserve)}</dd></dl><p>Excludes inspection, appraisal, lender escrows, and any rehab beyond the reserve.</p></aside>
+        </div>
+        <div className="capital-kpis"><div><span>Monthly P&amp;I</span><strong>{money.format(model.monthlyPI)}</strong></div><div><span>Loan amount</span><strong>{money.format(model.loan)}</strong></div><div><span>Capital break-even</span><strong>{model.capitalBreakEvenYear ? `Year ${model.capitalBreakEvenYear}` : "Beyond 30 years"}</strong></div><div><span>Year-10 loan balance</span><strong>{money.format(model.years[9].endingBalance)}</strong></div></div>
+        <div className="capital-chart"><div className="chart-label">Capital recovery <small>cumulative cash flow + principal paydown − initial cash required</small></div><svg viewBox="0 0 900 240" role="img" aria-label="Capital recovery and amortization break-even by year"><line x1="35" y1={capitalY(0)} x2="880" y2={capitalY(0)} className="zero"/><polyline points={model.years.map((row, index) => `${35 + index * 29},${capitalY(row.capitalPosition)}`).join(" ")} className="capital-line" fill="none"/>{model.capitalBreakEvenYear && <circle cx={35 + (model.capitalBreakEvenYear - 1) * 29} cy={capitalY(model.years[model.capitalBreakEvenYear - 1].capitalPosition)} r="7" className="break-even-dot"/>}</svg><div className="chart-ticks"><span>Year 1</span><span>Year 10</span><span>Year 20</span><span>Year 30 · {compactMoney.format(model.years[29].capitalPosition)}</span></div></div>
+        <details className="amortization-table"><summary>View annual amortization table</summary><div><table><thead><tr><th>Year</th><th>Beginning</th><th>Payments</th><th>Principal</th><th>Interest</th><th>Ending</th></tr></thead><tbody>{model.years.slice(0, model.termYears).map((row) => <tr key={row.year}><td>{row.year}</td><td>{money.format(row.beginningBalance)}</td><td>{money.format(row.annualDebtService)}</td><td>{money.format(row.principalPaid)}</td><td>{money.format(row.annualInterest)}</td><td>{money.format(row.endingBalance)}</td></tr>)}</tbody></table></div></details>
+      </section>
       <section id="overview" className="listing-hero">
         <div className="listing-gallery">
-          <div className="listing-primary-image">{primaryImage ? <img src={primaryImage} alt={activeMlsPhoto?.caption || `Property view of ${subject.address}`}/> : <div className="image-missing">Property imagery unavailable</div>}<span>{activeMlsPhoto ? `MLS listing ${listingMedia.listingNumber || "photo"}` : "Aerial parcel view"}</span></div>
-          {listingMedia.photos.length > 1 && <div className="listing-photo-rail" aria-label="MLS listing photos">{listingMedia.photos.slice(0, 7).map((photo, index) => <button type="button" className={index === activePhoto ? "selected" : ""} onClick={() => setActivePhoto(index)} aria-label={`Show listing photo ${index + 1}`} key={photo.id}><img src={photo.thumbnailUrl || photo.imageUrl} alt=""/></button>)}</div>}
+          <a className="listing-primary-image" href={streetViewUrl} target="_blank" rel="noreferrer">{primaryImage ? <img src={primaryImage} alt={activeMlsPhoto?.caption || `Property view of ${subject.address}`}/> : <div className="image-missing">Property imagery unavailable</div>}<span>{activeMlsPhoto ? `MLS listing ${listingMedia.listingNumber || "photo"}` : "Aerial parcel view"}</span><strong className="street-view-badge">{subject.latitude !== null ? "Open Google Street View ↗" : "Find Street View on Google ↗"}</strong></a>
+          {listingMedia.photos.length > 1 && <div className="listing-photo-rail" aria-label="MLS listing photos"><a className="street-view-tile" href={streetViewUrl} target="_blank" rel="noreferrer"><span>360°</span><b>Street View</b></a>{listingMedia.photos.slice(0, 7).map((photo, index) => <button type="button" className={index === activePhoto ? "selected" : ""} onClick={() => setActivePhoto(index)} aria-label={`Show listing photo ${index + 1}`} key={photo.id}><img src={photo.thumbnailUrl || photo.imageUrl} alt=""/></button>)}</div>}
           {!activeMlsPhoto && <div className="listing-gallery-empty"><strong>Historical MLS photos</strong><span>We are checking the property’s prior MLS records.</span><a href={photoSource?.url ?? zillowSearch} target="_blank" rel="noreferrer">Search public photo history ↗</a></div>}
         </div>
-        <article className="listing-summary-card"><p className="eyebrow">INVESTMENT PROPERTY</p><h1>{subject.address}</h1><p className="listing-location">{propertyLabel}</p><div className="listing-facts"><span>{units} units</span><span>{subject.yearBuilt ? `Built ${subject.yearBuilt}` : "Year unknown"}</span><span>{subject.lotSize ? `${subject.lotSize.toLocaleString()} sq ft lot` : "Lot size unknown"}</span></div><div className="listing-value"><div><span>{valueLabel}</span><strong>{money.format(subject.assessedValue)}</strong><small>Screening reference, not a market price</small></div><div><span>Planning range</span><b>{money.format(valueLow)}–{money.format(valueHigh)}</b><small>±8% assessment sensitivity</small></div></div><div className="listing-cta"><a className="primary" href="#deal-analysis">Run deal analysis</a><a href={mapsUrl} target="_blank" rel="noreferrer">Map &amp; directions ↗</a></div></article>
+        <article className="listing-summary-card"><p className="eyebrow">INVESTMENT PROPERTY</p><h1>{subject.address}</h1><p className="listing-location">{propertyLabel}</p><div className="listing-facts"><span>{units} units</span><span>{buildingArea ? `${buildingArea.toLocaleString()} sq ft building` : "Building area unknown"}</span><span>{garageSpaces !== null ? `${garageSpaces} garage spaces` : "Garage unknown"}</span><span>{subject.yearBuilt ? `Built ${subject.yearBuilt}` : "Year unknown"}</span><span>Neighborhood / access {subject.locationScore}/100 · {subject.locationGrade}</span></div><div className="listing-value"><div><span>{valueLabel}</span><strong>{money.format(subject.assessedValue)}</strong><small>Screening reference, not a market price</small></div><div><span>Planning range</span><b>{money.format(valueLow)}–{money.format(valueHigh)}</b><small>±8% assessment sensitivity</small></div></div><div className="listing-cta"><a className="primary" href="#deal-analysis">Run deal analysis</a><a href={mapsUrl} target="_blank" rel="noreferrer">Map &amp; directions ↗</a></div></article>
       </section>
       <section id="facts" className="portal-detail-grid">
-        <article className="portal-card"><div className="portal-card-heading"><div><p className="eyebrow">HOME DETAILS</p><h2>Facts and features</h2></div><span className="data-label">{recordLabel}</span></div><dl className="portal-fact-list">{propertyFacts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><div className="detail-callouts"><div><span>Backyard potential</span><strong className={subject.yardPotential === "Strong" ? "positive" : ""}>{subject.yardPotential}</strong></div><div><span>Transit screen</span><strong className={subject.inTransitCorridor ? "negative" : "positive"}>{subject.inTransitCorridor ? "Near corridor" : "Outside corridor"}</strong></div><div><span>Location score</span><strong>{subject.locationScore}/100 · {subject.locationGrade}</strong></div></div></article>
+        <article className="portal-card"><div className="portal-card-heading"><div><p className="eyebrow">HOME DETAILS</p><h2>Facts and features</h2></div><span className="data-label">{recordLabel} + MLS</span></div><dl className="portal-fact-list">{propertyFacts.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl><div className="detail-callouts"><div><span>Backyard potential</span><strong className={subject.yardPotential === "Strong" ? "positive" : ""}>{subject.yardPotential}</strong></div><div><span>Transit screen</span><strong className={subject.inTransitCorridor ? "negative" : "positive"}>{subject.inTransitCorridor ? "Near corridor" : "Outside corridor"}</strong></div><div><span>Neighborhood / access score</span><strong>{subject.locationScore}/100 · {subject.locationGrade}</strong><small>{subject.locationReasons.join(" · ")}</small><small className="score-caveat">Access screen only—not a school, crime, or appraisal rating.</small></div></div></article>
         <article className="portal-card ownership-card"><div className="portal-card-heading"><div><p className="eyebrow">OWNERSHIP &amp; VALUE</p><h2>What to verify next</h2></div></div><ol className="property-timeline"><li><span>Acquired</span><strong>{subject.deedDate || "Deed date unavailable"}</strong><small>{subject.yearsOwned ? `${subject.yearsOwned} years of recorded ownership` : "Confirm through JOC / recorder"}</small></li><li><span>Current assessment</span><strong>{money.format(subject.assessedValue)}</strong><small>Use as a triage reference, not a comp</small></li><li><span>Due diligence</span><strong>Verify leases, condition, and title</strong><small>Owner motivation is never inferred from a public record</small></li></ol></article>
       </section>
-      <section id="deal-analysis" className="model-summary">
-        <div><span>{valueLabel}</span><strong>{money.format(subject.assessedValue)}</strong><small>Screening reference, not a sale comp</small></div><div><span>Model purchase price</span><strong>{money.format(price)}</strong><small>Editable below</small></div><div><span>Monthly cash flow</span><strong className={model.cashFlow >= 0 ? "positive" : "negative"}>{money.format(model.cashFlow / 12)}</strong><small>Before income tax</small></div><div><span>Cash to close</span><strong>{money.format(model.cashToClose)}</strong><small>Down payment + 2% closing</small></div>
+      <section className="model-summary">
+        <div><span>{valueLabel}</span><strong>{money.format(subject.assessedValue)}</strong><small>Screening reference, not a sale comp</small></div><div><span>Model purchase price</span><strong>{money.format(price)}</strong><small>Editable above</small></div><div><span>Monthly cash flow</span><strong className={model.cashFlow >= 0 ? "positive" : "negative"}>{money.format(model.cashFlow / 12)}</strong><small>Before income tax</small></div><div><span>Cash to close</span><strong>{money.format(model.cashToClose)}</strong><small>Acquisition + furnishings + reserve</small></div>
       </section>
       <section className={`decision-banner ${model.dscr >= 1.2 && model.tenYearIrr >= 12 ? "decision-go" : model.dscr < 1 || model.tenYearIrr < 7 ? "decision-stop" : "decision-review"}`}><div><p className="eyebrow">PLAIN-ENGLISH READ</p><h2>{model.dscr >= 1.2 && model.tenYearIrr >= 12 ? "Worth deeper due diligence" : model.dscr < 1 || model.tenYearIrr < 7 ? "Do not pursue at these assumptions" : "Negotiate or improve the income"}</h2></div><div className="decision-reasons"><span>{model.cashFlow >= 0 ? "✓" : "×"} {model.cashFlow >= 0 ? "Positive monthly cash flow" : "Negative monthly cash flow"}</span><span>{model.dscr >= 1.2 ? "✓" : "×"} DSCR {model.dscr.toFixed(2)}×</span><span>{model.tenYearIrr >= 12 ? "✓" : "×"} 10-year IRR {model.tenYearIrr.toFixed(1)}%</span><span>{model.breakEvenOccupancy <= 90 ? "✓" : "×"} Break-even occupancy {model.breakEvenOccupancy.toFixed(1)}%</span></div></section>
 
       <section className="owner-occupy panel"><div className="owner-copy"><p className="eyebrow">HOUSE-HACK / OWNER-OCCUPANT VIEW</p><h2>Live in one unit. Let {otherUnits} units offset the payment.</h2><p>The model applies the vacancy assumption to scheduled rent from the other {otherUnits} units. {units <= 4 ? "Qualification rules and eligible rents must be confirmed by a lender and appraiser." : "Properties with more than four units require commercial lending review; this is not an FHA qualification test."}</p><div className="owner-numbers"><div><span>Other {otherUnits} units</span><strong>{money.format(model.otherUnitRent)}<small>/mo</small></strong></div><div><span>Estimated PITI</span><strong>{money.format(model.piti)}<small>/mo</small></strong></div><div><span>Net housing cost</span><strong className={model.ownerHousingCost <= 2000 ? "positive" : "negative"}>{money.format(model.ownerHousingCost)}<small>/mo</small></strong></div><div><span>{units <= 4 ? "FHA-style self-sufficiency margin" : "Other-unit rent less PITI"}</span><strong className={model.fhaSelfSufficiencyMargin >= 0 ? "positive" : "negative"}>{money.format(model.fhaSelfSufficiencyMargin)}<small>/mo</small></strong></div></div></div><div className="break-even-graph"><h3>Occupancy break-even</h3><div className="occupancy-track"><div className="danger-zone" style={{ width: `${Math.min(100, model.breakEvenOccupancy)}%` }}/><i className="break-marker" style={{ left: `${Math.min(100, model.breakEvenOccupancy)}%` }}><b>Break even</b><span>{model.breakEvenOccupancy.toFixed(1)}%</span></i><i className="assumed-marker" style={{ left: `${100 - vacancy}%` }}><b>Assumed</b><span>{100 - vacancy}%</span></i></div><div className="occupancy-scale"><span>0% occupied</span><span>100% occupied</span></div><p>{model.breakEvenOccupancy > 95 ? "Very fragile: the deal needs near-perfect occupancy." : model.breakEvenOccupancy > 85 ? "Thin cushion: one vacancy can materially hurt cash flow." : "The model has a reasonable occupancy cushion."}</p></div></section>
 
       <section className="model-grid">
-        <article className="panel model-controls"><div className="panel-head"><div><p className="eyebrow">YOUR ASSUMPTIONS</p><h2>Deal inputs</h2></div><span className="source-pill">Editable</span></div>
-          <div className="input-grid"><Num label="Purchase price" value={price} onChange={setPrice}/><Num label="Total monthly rent" value={monthlyRent} onChange={setMonthlyRent}/><Num label="Annual property tax" value={taxes} onChange={setTaxes}/><Num label="Annual insurance" value={insurance} onChange={setInsurance}/><Num label="Annual utilities" value={utilities} onChange={setUtilities}/><Num label="Vacancy" value={vacancy} onChange={setVacancy} suffix="%"/><Num label="Maintenance" value={maintenance} onChange={setMaintenance} suffix="%"/><Num label="Management" value={management} onChange={setManagement} suffix="%"/><Num label="Annual appreciation" value={appreciation} onChange={setAppreciation} suffix="%"/><Num label="Annual rent growth" value={rentGrowth} onChange={setRentGrowth} suffix="%"/></div>
+        <article className="panel model-controls"><div className="panel-head"><div><p className="eyebrow">YOUR OPERATING ASSUMPTIONS</p><h2>Income and expenses</h2></div><span className="source-pill">Editable</span></div>
+          <div className="input-grid"><Num label="Total monthly rent" value={monthlyRent} onChange={setMonthlyRent}/><Num label="Annual property tax" value={taxes} onChange={setTaxes}/><Num label="Annual insurance" value={insurance} onChange={setInsurance}/><Num label="Annual utilities" value={utilities} onChange={setUtilities}/><Num label="Other annual expenses" value={otherExpenses} onChange={setOtherExpenses}/><Num label="Vacancy" value={vacancy} onChange={setVacancy} suffix="%"/><Num label="Maintenance" value={maintenance} onChange={setMaintenance} suffix="%"/><Num label="Capital expenditures" value={capex} onChange={setCapex} suffix="%"/><Num label="Management" value={management} onChange={setManagement} suffix="%"/><Num label="Annual appreciation" value={appreciation} onChange={setAppreciation} suffix="%"/><Num label="Annual rent growth" value={rentGrowth} onChange={setRentGrowth} suffix="%"/><Num label="Annual expense growth" value={expenseGrowth} onChange={setExpenseGrowth} suffix="%"/></div>
           <p className="assumption-note">Defaults are labeled planning assumptions. Replace them with lender quotes, actual leases, tax bills, insurance estimates, and inspection findings.</p>
         </article>
         <article className="panel financing"><div className="panel-head"><div><p className="eyebrow">FINANCING OPTIONS</p><h2>Ways to buy</h2></div></div>
-          <div className="scenario-tabs">{scenarios.map((item, index) => <button key={item.name} className={active === index ? "active" : ""} onClick={() => setActive(index)}>{item.name}</button>)}</div>
-          <div className="scenario-hero"><div><span>Estimated P&amp;I</span><strong>{money.format(model.monthlyPI)}<small>/mo</small></strong></div><div className="scenario-ring" style={{ background: `conic-gradient(${scenario.color} ${scenario.down}%, #e9edf5 0)` }}><span>{scenario.down}%<small>down</small></span></div></div>
-          <dl className="model-dl"><dt>Loan amount</dt><dd>{money.format(model.loan)}</dd><dt>Interest rate</dt><dd>{scenario.rate}%</dd><dt>Term</dt><dd>{scenario.years} years</dd><dt>Estimated cash to close</dt><dd>{money.format(model.cashToClose)}</dd><dt>DSCR</dt><dd className={model.dscr >= 1.2 ? "positive" : "negative"}>{model.dscr.toFixed(2)}×</dd></dl>
+          <div className="scenario-tabs">{scenarios.map((item, index) => <button key={item.name} className={active === index ? "active" : ""} onClick={() => selectScenario(index)}>{item.name}</button>)}</div>
+          <div className="scenario-hero"><div><span>Estimated P&amp;I</span><strong>{money.format(model.monthlyPI)}<small>/mo</small></strong></div><div className="scenario-ring" style={{ background: `conic-gradient(${scenario.color} ${Math.min(100, downPayment)}%, #e9edf5 0)` }}><span>{downPayment}%<small>down</small></span></div></div>
+          <dl className="model-dl"><dt>Loan amount</dt><dd>{money.format(model.loan)}</dd><dt>Interest rate</dt><dd>{interestRate}%</dd><dt>Amortization</dt><dd>{model.termYears} years</dd><dt>Estimated total cash</dt><dd>{money.format(model.cashToClose)}</dd><dt>DSCR</dt><dd className={model.dscr >= 1.2 ? "positive" : "negative"}>{model.dscr.toFixed(2)}×</dd></dl>
           <small className="fine">Low-down and seller-financing terms are illustrative—not a loan approval or quoted product. Mortgage insurance is not included.</small>
         </article>
       </section>

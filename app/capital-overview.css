@@ -1,0 +1,262 @@
+.capital-overview {
+  margin-bottom: 20px;
+}
+
+.capital-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.55fr);
+  gap: 18px;
+  padding: 22px 24px 18px;
+}
+
+.capital-inputs h3,
+.cash-scope h3 {
+  margin: 0 0 15px;
+  color: #17243b;
+  font-size: 16px;
+}
+
+.capital-inputs .input-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.cash-scope {
+  align-self: stretch;
+  border-radius: 14px;
+  padding: 20px;
+  background: linear-gradient(145deg, #152742, #0e1b30);
+  color: #fff;
+}
+
+.cash-scope .eyebrow {
+  color: #8ebcff;
+}
+
+.cash-scope h3 {
+  margin: 0 0 12px;
+  color: #fff;
+  font-family: Georgia, serif;
+  font-size: 34px;
+  font-weight: 500;
+}
+
+.cash-scope dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 15px;
+  margin: 0;
+}
+
+.cash-scope dt,
+.cash-scope dd {
+  margin: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 9px 0;
+  font-size: 12px;
+}
+
+.cash-scope dt {
+  color: #aebbd0;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.cash-scope dd {
+  color: #fff;
+  font-weight: 750;
+  text-align: right;
+}
+
+.cash-scope > p:last-child {
+  margin: 13px 0 0;
+  color: #aebbd0;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.capital-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  padding: 0 24px 18px;
+}
+
+.capital-kpis > div {
+  border: 1px solid #e1e7f0;
+  border-radius: 11px;
+  padding: 13px 15px;
+  background: #f8fafc;
+}
+
+.capital-kpis span,
+.capital-kpis strong {
+  display: block;
+}
+
+.capital-kpis span {
+  color: #6b7890;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.capital-kpis strong {
+  margin-top: 6px;
+  color: #1b2b47;
+  font-size: 18px;
+}
+
+.capital-chart {
+  margin: 0 24px 18px;
+  border: 1px solid #dfe6ef;
+  border-radius: 13px;
+  padding: 15px 17px 12px;
+  background: #fff;
+}
+
+.capital-chart svg {
+  display: block;
+  width: 100%;
+  height: 205px;
+  overflow: visible;
+}
+
+.capital-line {
+  stroke: #0b9072;
+  stroke-width: 4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.break-even-dot {
+  fill: #fff;
+  stroke: #0b9072;
+  stroke-width: 5;
+}
+
+.amortization-table {
+  margin: 0 24px 24px;
+  border: 1px solid #dfe6ef;
+  border-radius: 11px;
+  background: #fbfcfe;
+}
+
+.amortization-table summary {
+  cursor: pointer;
+  padding: 13px 15px;
+  color: #254f9d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.amortization-table > div {
+  max-height: 365px;
+  overflow: auto;
+  border-top: 1px solid #e3e8f0;
+}
+
+.amortization-table th,
+.amortization-table td {
+  white-space: nowrap;
+}
+
+.listing-primary-image {
+  display: block;
+  color: inherit;
+}
+
+.listing-primary-image .street-view-badge {
+  position: absolute;
+  bottom: 13px;
+  left: 13px;
+  border-radius: 7px;
+  padding: 7px 10px;
+  background: #fff;
+  box-shadow: 0 4px 15px rgba(5, 20, 42, 0.22);
+  color: #174d98;
+  font-size: 11px;
+}
+
+.street-view-tile {
+  display: grid;
+  width: 90px;
+  height: 52px;
+  flex: 0 0 auto;
+  place-content: center;
+  border: 2px solid #3670d3;
+  border-radius: 7px;
+  background: linear-gradient(145deg, #e7f1ff, #fff);
+  color: #16458f;
+  text-align: center;
+}
+
+.street-view-tile span,
+.street-view-tile b {
+  display: block;
+}
+
+.street-view-tile span {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.street-view-tile b {
+  margin-top: 3px;
+  font-size: 9px;
+}
+
+.detail-callouts small {
+  display: block;
+  margin-top: 5px;
+  color: #718096;
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.detail-callouts .score-caveat {
+  color: #8a5b20;
+}
+
+@media (max-width: 1150px) {
+  .capital-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .capital-inputs .input-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .capital-kpis {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .capital-layout,
+  .capital-kpis {
+    padding-right: 17px;
+    padding-left: 17px;
+  }
+
+  .capital-inputs .input-grid,
+  .capital-kpis {
+    grid-template-columns: 1fr;
+  }
+
+  .capital-chart,
+  .amortization-table {
+    margin-right: 17px;
+    margin-left: 17px;
+  }
+
+  .capital-chart svg {
+    height: 155px;
+  }
+
+  .listing-primary-image .street-view-badge {
+    right: 13px;
+    left: auto;
+    bottom: 47px;
+  }
+}
