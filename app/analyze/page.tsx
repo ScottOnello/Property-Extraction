@@ -4,7 +4,11 @@ import { getSparkListingPhotos } from "@/lib/spark";
 import AnalysisClient from "./AnalysisClient";
 
 function sixplexToProperty(prospect: SixplexProspect): Property {
-  const address = [prospect.Address, prospect.City, prospect.State, prospect.Postal_Code].filter(Boolean).join(", ");
+  const sourceAddress = prospect.Address.trim();
+  const city = prospect.City.trim();
+  const address = city && sourceAddress.toUpperCase().includes(city.toUpperCase())
+    ? sourceAddress
+    : [sourceAddress, city, prospect.State, prospect.Postal_Code].filter(Boolean).join(", ");
   const owner = prospect.Owner_Name || "Owner unavailable";
   const ownerType = /\b(LLC|INC|CORP|COMPANY|LP|LLP|LTD|TRUST)\b/i.test(owner) ? "Entity/trust" : "Individual/estate";
   return {
