@@ -6,6 +6,7 @@ const FIELDS = ["OBJECTID", "Parcel_ID", "Parcel_ID_URL", "Parcel_Address", "Tot
 
 export type Property = {
   parcelId: string; address: string; owner: string; ownerAddress: string;
+  units: number;
   ownerCity: string; ownerState: string; ownerZip: string; deedDate: string;
   yearsOwned: number | null; yearBuilt: number | null; assessedValue: number;
   zoning: string; absentee: boolean; outOfState: boolean; ownerType: string;
@@ -169,6 +170,7 @@ async function load() {
     const yardPotential: Property["yardPotential"] = lotSize >= 10000 ? "Strong" : lotSize >= 7000 ? "Possible" : lotSize > 0 ? "Limited" : "Unknown";
     return {
       parcelId: String(row.Parcel_ID ?? ""), address: String(row.Parcel_Address ?? "Unknown address"), owner: String(row.Owner_Name ?? "Unknown owner"),
+      units: Number(row.Total_Living_Units) || 4,
       ownerAddress: String(row.Owner_Address ?? ""), ownerCity: String(row.Owner_City ?? ""), ownerState: String(row.Owner_State ?? ""), ownerZip: String(row.Owner_Zip ?? ""),
       deedDate: row.Deed_Date ? new Date(Number(row.Deed_Date)).toISOString().slice(0, 10) : "", yearsOwned: item.yearsOwned, yearBuilt: item.built,
       assessedValue: Number(row.Appraised_Total_Value) || 0, zoning: String(row.Zoning_District ?? ""), absentee: item.absentee, outOfState: item.outOfState,
