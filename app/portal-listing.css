@@ -23,12 +23,27 @@
 }
 
 .listing-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   display: flex;
+  align-items: center;
   gap: 23px;
   overflow: auto;
-  margin: 0 -4px 20px;
+  margin: 0 -12px 20px;
   border-bottom: 1px solid #dce3ed;
-  padding: 0 4px;
+  padding: 0 12px;
+  background: #f6f8f6;
+  box-shadow: 0 8px 15px rgba(246, 248, 246, 0.94);
+}
+
+.section-label {
+  flex: 0 0 auto;
+  color: #66758d;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
 }
 
 .listing-tabs a {
@@ -40,10 +55,49 @@
   font-weight: 750;
 }
 
-.listing-tabs a:first-child,
+.listing-tabs a:first-of-type,
 .listing-tabs a:hover {
   border-color: #2d61ca;
   color: #183c82;
+}
+
+.listing-tabs .tabs-top {
+  margin-left: auto;
+  color: #2858bd;
+}
+
+#overview,
+#facts,
+#deal-analysis,
+#comps,
+#returns {
+  scroll-margin-top: 66px;
+}
+
+.scroll-top {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 5;
+  display: grid;
+  width: 52px;
+  min-height: 52px;
+  place-items: center;
+  border: 1px solid #cbd7ec;
+  border-radius: 14px;
+  background: #172640;
+  box-shadow: 0 10px 24px rgba(22, 37, 64, 0.24);
+  color: #fff;
+}
+
+.scroll-top span {
+  font-size: 20px;
+  line-height: 14px;
+}
+
+.scroll-top b {
+  font-size: 10px;
+  line-height: 12px;
 }
 
 .listing-hero {
@@ -422,5 +476,19 @@
 
   .portal-fact-list > div:nth-child(odd) {
     margin-right: 0;
+  }
+
+  .listing-tabs {
+    gap: 16px;
+  }
+
+  .section-label,
+  .listing-tabs .tabs-top {
+    display: none;
+  }
+
+  .scroll-top {
+    right: 15px;
+    bottom: 15px;
   }
 }

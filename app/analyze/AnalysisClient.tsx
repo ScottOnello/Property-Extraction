@@ -117,10 +117,10 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
   const updateComp = (id: number, field: keyof Comp, value: string | number) => setComps(comps.map((comp) => comp.id === id ? { ...comp, [field]: value } : comp));
 
   return <div className="app-shell model-app">
-    <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a href="/">← Prospects</a><a className="active" href={buyLabHref}>Buy Lab</a><a href="#comps">Comparable sales</a><a href="#returns">30-year outlook</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
+    <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a href="/">← Prospects</a><a className="active" href="#overview">Property overview</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">30-year outlook</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
     <main className="workspace model-workspace">
       <header className="portal-header"><div><p className="eyebrow">PROPERTY DETAIL · {isSixplex ? `MLS ${subject.parcelId.slice("sixplex-".length)}` : `PARCEL ${subject.parcelId}`}</p><p className="portal-breadcrumb">Alaska multifamily / Buy Lab</p></div><div className="portal-actions"><a href={streetViewUrl} target="_blank" rel="noreferrer">Street View ↗</a><a className="evidence top-evidence" target="_blank" rel="noreferrer" href={subject.evidenceUrl}>{recordLabel} ↗</a></div></header>
-      <nav className="listing-tabs" aria-label="Property sections"><a href="#overview">Overview</a><a href="#facts">Facts &amp; features</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">Long-term returns</a></nav>
+      <nav className="listing-tabs" aria-label="Property sections"><span className="section-label">Jump to</span><a href="#overview">Overview</a><a href="#facts">Facts &amp; features</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">Long-term returns</a><a className="tabs-top" href="#overview">↑ Top</a></nav>
       <section id="overview" className="listing-hero">
         <div className="listing-gallery">
           <div className="listing-primary-image">{primaryImage ? <img src={primaryImage} alt={activeMlsPhoto?.caption || `Property view of ${subject.address}`}/> : <div className="image-missing">Property imagery unavailable</div>}<span>{activeMlsPhoto ? `MLS listing ${listingMedia.listingNumber || "photo"}` : "Aerial parcel view"}</span></div>
@@ -171,5 +171,6 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
         <article className="panel decision"><p className="eyebrow">DECISION CHECK</p><h2>{model.dscr >= 1.2 && model.cashFlow > 0 ? "The rental case clears its first screen." : "The current assumptions need work."}</h2><p>{model.dscr >= 1.2 ? `DSCR is ${model.dscr.toFixed(2)}×, above a common 1.20× screening threshold.` : `DSCR is ${model.dscr.toFixed(2)}×. Increase verified rent, lower the price, or improve the financing structure.`} Validate comps and all operating costs before making an offer.</p><a className="primary link-button" href={subject.evidenceUrl} target="_blank" rel="noreferrer">Review source record</a></article>
       </section>
     </main>
+    <a className="scroll-top" href="#overview" aria-label="Return to property overview"><span>↑</span><b>Top</b></a>
   </div>;
 }
