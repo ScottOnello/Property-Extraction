@@ -13,6 +13,7 @@ type Scenario = { name: string; down: number; rate: number; years: number; color
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 const compactMoney = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 1 });
+const EXIT_COST_PCT = 8;
 const scenarios: Scenario[] = [
   { name: "Conventional", down: 20, rate: 6.75, years: 30, color: "#3767e8" },
   { name: "Low down", down: 3.5, rate: 6.5, years: 30, color: "#0c9a78" },
@@ -33,7 +34,7 @@ function balance(principal: number, annualRate: number, years: number, paidMonth
 }
 
 function Num({ label, value, onChange, suffix }: { label: string; value: number; onChange: (value: number) => void; suffix?: string }) {
-  return <label className="model-field"><span>{label}</span><div><input type="number" value={value} onChange={(event) => onChange(Number(event.target.value))}/>{suffix && <i>{suffix}</i>}</div></label>;
+  return <label className="model-field"><span>{label}</span><div><input type="number" value={value} onChange={(event) => { const nextValue = Number(event.target.value); onChange(Number.isFinite(nextValue) ? nextValue : 0); }}/>{suffix && <i>{suffix}</i>}</div></label>;
 }
 
 export default function AnalysisClient({ subject, references, listingMedia }: { subject: Property; references: Reference[]; listingMedia: SparkListingMedia }) {
@@ -98,41 +99,52 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
 
   const model = useMemo(() => {
     const termYears = Math.max(1, Math.min(30, Math.round(amortizationYears || 30)));
+    const safePrice = Math.max(0, price);
+    const safeMonthlyRent = Math.max(0, monthlyRent);
     const safeDownPayment = Math.max(0, Math.min(100, downPayment));
-    const loan = price * (1 - safeDownPayment / 100);
+    const loan = safePrice * (1 - safeDownPayment / 100);
     const safeInterestRate = Math.max(0, interestRate);
     const monthlyPI = payment(loan, safeInterestRate, termYears);
-    const gross = monthlyRent * 12;
-    const operating = taxes + insurance + utilities + otherExpenses + gross * (vacancy + maintenance + management + capex) / 100;
+    const gross = safeMonthlyRent * 12;
+    const fixedExpenses = Math.max(0, taxes) + Math.max(0, insurance) + Math.max(0, utilities) + Math.max(0, otherExpenses);
+    const operating = fixedExpenses + gross * (vacancy + maintenance + management + capex) / 100;
     const noi = gross - operating;
     const cashFlow = noi - monthlyPI * 12;
-    const downPaymentCash = price * safeDownPayment / 100;
-    const closingCosts = price * Math.max(0, closingCostPct) / 100;
+    const downPaymentCash = safePrice * safeDownPayment / 100;
+    const closingCosts = safePrice * Math.max(0, closingCostPct) / 100;
     const loanPoints = loan * Math.max(0, loanPointsPct) / 100;
     const furnishingCost = Math.max(0, Math.min(units, furnishedUnits)) * Math.max(0, furnishingPerUnit);
     const safeRepairReserve = Math.max(0, repairReserve);
     const cashToClose = downPaymentCash + closingCosts + loanPoints + furnishingCost + safeRepairReserve;
     const compValues = comps.filter((comp) => comp.soldPrice > 0).map((comp) => comp.soldPrice);
     const compMedian = compValues.length ? [...compValues].sort((a, b) => a - b)[Math.floor(compValues.length / 2)] : null;
+    const monthlySchedule = Array.from({ length: termYears * 12 }, (_, index) => {
+      const beginningBalance = Math.max(0, balance(loan, safeInterestRate, termYears, index));
+      const monthlyInterest = beginningBalance * safeInterestRate / 1200;
+      const principalPaid = Math.min(beginningBalance, Math.max(0, monthlyPI - monthlyInterest));
+      const actualPayment = monthlyInterest + principalPaid;
+      return { month: index + 1, year: Math.floor(index / 12) + 1, beginningBalance, payment: actualPayment, principalPaid, interest: monthlyInterest, endingBalance: Math.max(0, beginningBalance - principalPaid) };
+    });
     let cumulativeCashFlow = 0;
     const years = Array.from({ length: 30 }, (_, index) => {
       const year = index + 1;
-      const value = price * Math.pow(1 + appreciation / 100, year);
+      const value = safePrice * Math.pow(1 + appreciation / 100, year);
       const rent = gross * Math.pow(1 + rentGrowth / 100, index);
       const variable = gross * (vacancy + maintenance + management + capex) / 100 * Math.pow(1 + rentGrowth / 100, index);
-      const fixed = (taxes + insurance + utilities + otherExpenses) * Math.pow(1 + expenseGrowth / 100, index);
-      const annualDebtService = year <= termYears ? monthlyPI * Math.min(12, Math.max(0, termYears * 12 - index * 12)) : 0;
+      const fixed = fixedExpenses * Math.pow(1 + expenseGrowth / 100, index);
+      const debtMonths = monthlySchedule.filter((row) => row.year === year);
+      const annualDebtService = debtMonths.reduce((sum, row) => sum + row.payment, 0);
       const annualCashFlow = rent - variable - fixed - annualDebtService;
       cumulativeCashFlow += annualCashFlow;
-      const beginningBalance = Math.max(0, balance(loan, safeInterestRate, termYears, index * 12));
-      const endingBalance = Math.max(0, balance(loan, safeInterestRate, termYears, year * 12));
-      const principalPaid = beginningBalance - endingBalance;
-      const annualInterest = Math.max(0, annualDebtService - principalPaid);
+      const beginningBalance = debtMonths[0]?.beginningBalance ?? 0;
+      const endingBalance = debtMonths.at(-1)?.endingBalance ?? 0;
+      const principalPaid = debtMonths.reduce((sum, row) => sum + row.principalPaid, 0);
+      const annualInterest = debtMonths.reduce((sum, row) => sum + row.interest, 0);
       const totalPrincipalPaid = loan - endingBalance;
       const capitalPosition = -cashToClose + cumulativeCashFlow + totalPrincipalPaid;
       return { year, value, equity: value - endingBalance, cashFlow: annualCashFlow, beginningBalance, endingBalance, principalPaid, annualInterest, annualDebtService, capitalPosition };
     });
-    const tenYearFlows = [-cashToClose, ...years.slice(0, 10).map((row, index) => index === 9 ? row.cashFlow + row.value * .92 - row.endingBalance : row.cashFlow)];
+    const tenYearFlows = [-cashToClose, ...years.slice(0, 10).map((row, index) => index === 9 ? row.cashFlow + row.value * (1 - EXIT_COST_PCT / 100) - row.endingBalance : row.cashFlow)];
     const tenYearIrr = irr(tenYearFlows);
     const debtYield = loan ? noi / loan * 100 : 0;
     const breakEvenOccupancy = gross ? (operating - gross * vacancy / 100 + monthlyPI * 12) / gross * 100 : 0;
@@ -141,7 +153,8 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
     const otherUnitRent = monthlyRent * (otherUnits / units);
     const ownerHousingCost = piti + utilities / 12 - otherUnitRent * (1 - vacancy / 100);
     const fhaSelfSufficiencyMargin = otherUnitRent - piti;
-    return { loan, monthlyPI, gross, operating, noi, cashFlow, cashToClose, downPaymentCash, closingCosts, loanPoints, furnishingCost, repairReserve: safeRepairReserve, compMedian, years, tenYearIrr, debtYield, breakEvenOccupancy, capitalBreakEvenYear, termYears, piti, otherUnitRent, ownerHousingCost, fhaSelfSufficiencyMargin, capRate: price ? noi / price * 100 : 0, dscr: monthlyPI ? noi / (monthlyPI * 12) : 0 };
+    const yearTenExitProceeds = years[9].value * (1 - EXIT_COST_PCT / 100) - years[9].endingBalance;
+    return { loan, monthlyPI, gross, operating, noi, cashFlow, cashToClose, downPaymentCash, closingCosts, loanPoints, furnishingCost, repairReserve: safeRepairReserve, compMedian, monthlySchedule, years, tenYearIrr, debtYield, breakEvenOccupancy, capitalBreakEvenYear, termYears, piti, otherUnitRent, ownerHousingCost, fhaSelfSufficiencyMargin, yearTenExitProceeds, capRate: safePrice ? noi / safePrice * 100 : 0, cashOnCash: cashToClose ? cashFlow / cashToClose * 100 : 0, dscr: monthlyPI ? noi / (monthlyPI * 12) : 0 };
   }, [price, downPayment, interestRate, amortizationYears, closingCostPct, loanPointsPct, furnishedUnits, furnishingPerUnit, repairReserve, monthlyRent, taxes, insurance, utilities, otherExpenses, vacancy, maintenance, management, capex, appreciation, rentGrowth, expenseGrowth, comps, units, otherUnits]);
 
   const maxEquity = Math.max(...model.years.map((row) => row.equity), 1);
@@ -152,6 +165,35 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
   const capitalY = (value: number) => 205 - (value - capitalMin) / capitalRange * 170;
   const valueLow = Math.round(subject.assessedValue * 0.92 / 1000) * 1000;
   const valueHigh = Math.round(subject.assessedValue * 1.08 / 1000) * 1000;
+  const verifiedCompCount = comps.filter((comp) => comp.soldPrice > 0).length;
+  const monthlyCashFlow = model.cashFlow / 12;
+  const decision = (() => {
+    const hasCoreInputs = price > 0 && monthlyRent > 0;
+    const isDown = !hasCoreInputs || monthlyCashFlow < 0 || model.dscr < 1 || model.tenYearIrr < 7 || model.breakEvenOccupancy > 100;
+    const isUp = !isDown && model.cashFlow >= 0 && model.dscr >= 1.2 && model.tenYearIrr >= 12 && model.breakEvenOccupancy <= 90 && model.capRate >= 5;
+    const verdict = isUp ? "up" : isDown ? "down" : "maybe";
+    const title = isUp ? "Thumbs up — advance to due diligence" : isDown ? "Thumbs down — do not proceed on these inputs" : "Maybe — improve the deal before moving forward";
+    const headline = isUp
+      ? "The modeled income covers the debt with a cushion and the projected 10-year return clears the Buy Lab screen."
+      : isDown
+        ? "The current price, income, or financing does not support a resilient rental investment case."
+        : "The deal is close enough to investigate, but it needs a better price, more verified income, or stronger financing terms.";
+    const nextStep = !hasCoreInputs
+      ? "Enter a purchase price and total monthly rent before trusting the recommendation."
+      : verifiedCompCount < 3
+        ? "Add at least three verified closed-sale comps before treating the price as supported."
+        : monthlyCashFlow < 0
+          ? "Lower the offer, verify higher rent, or restructure financing until year-one cash flow is positive."
+          : model.dscr < 1.2
+            ? "Improve NOI or lower debt: a 1.20× DSCR is the next lender-style screen to clear."
+            : model.breakEvenOccupancy > 90
+              ? "Reduce fixed costs or debt; the property needs too much occupancy to stay whole."
+              : model.tenYearIrr < 12
+                ? "Negotiate the price or confirm a better rent/exit case to improve the projected return."
+                : "Verify leases, operating statements, insurance, taxes, title, and building condition before an offer.";
+    const story = `Putting ${money.format(model.cashToClose)} into this purchase is projected to ${monthlyCashFlow >= 0 ? `produce ${money.format(monthlyCashFlow)} per month before income tax` : `use ${money.format(Math.abs(monthlyCashFlow))} per month before income tax`}. The ${model.dscr.toFixed(2)}× DSCR means operating income ${model.dscr >= 1.2 ? "covers the mortgage with a cushion" : model.dscr >= 1 ? "covers the mortgage, but with a thin cushion" : "does not fully cover the mortgage"}. If rent, expenses, financing, ${appreciation}% annual value growth, and an ${EXIT_COST_PCT}% sale cost hold through year 10, the model estimates a ${model.tenYearIrr.toFixed(1)}% levered IRR.`;
+    return { verdict, title, headline, nextStep, story };
+  })();
   const addComp = () => { setComps([...comps, { id: nextCompId, address: "", soldPrice: 0, saleDate: "", sqft: 0, units }]); setNextCompId(nextCompId + 1); };
   const updateComp = (id: number, field: keyof Comp, value: string | number) => setComps(comps.map((comp) => comp.id === id ? { ...comp, [field]: value } : comp));
   const selectScenario = (index: number) => {
@@ -160,10 +202,19 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
   };
 
   return <div className="app-shell model-app">
-    <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a href="/">← Prospects</a><a href="/garages">Garage deals</a><a className="active" href="#overview">Property overview</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">30-year outlook</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
+    <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a href="/">← Prospects</a><a href="/off-market">Off-market candidates</a><a href="/garages">Garage deals</a><a className="active" href="#decision">Decision Bot</a><a href="#overview">Property overview</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">30-year outlook</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
     <main className="workspace model-workspace">
       <header className="portal-header"><div><p className="eyebrow">PROPERTY DETAIL · {isSixplex ? `MLS ${subject.parcelId.slice("sixplex-".length)}` : isMlsRecord ? `MLS ${subject.parcelId.slice("mls-".length)}` : `PARCEL ${subject.parcelId}`}</p><p className="portal-breadcrumb">Alaska multifamily / Buy Lab</p></div><div className="portal-actions"><a href={streetViewUrl} target="_blank" rel="noreferrer">Street View ↗</a><a className="evidence top-evidence" target="_blank" rel="noreferrer" href={subject.evidenceUrl}>{recordLabel} ↗</a></div></header>
-      <nav className="listing-tabs" aria-label="Property sections"><span className="section-label">Jump to</span><a href="#overview">Overview</a><a href="#facts">Facts &amp; features</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">Long-term returns</a><a className="tabs-top" href="#overview">↑ Top</a></nav>
+      <nav className="listing-tabs" aria-label="Property sections"><span className="section-label">Jump to</span><a href="#decision">Decision</a><a href="#overview">Overview</a><a href="#facts">Facts &amp; features</a><a href="#deal-analysis">Deal analysis</a><a href="#comps">Comparable sales</a><a href="#returns">Long-term returns</a><a className="tabs-top" href="#decision">↑ Top</a></nav>
+      <section id="decision" className={`deal-decision deal-decision-${decision.verdict}`} aria-live="polite">
+        <div className="deal-decision-top">
+          <div className="deal-decision-verdict"><span className="deal-decision-thumb" aria-hidden="true">{decision.verdict === "up" ? "👍" : decision.verdict === "maybe" ? "🤔" : "👎"}</span><div><p className="eyebrow">BUY LAB DECISION BOT · LIVE MODEL</p><h1>{decision.title}</h1><p>{decision.headline}</p></div></div>
+          <div className="deal-decision-irr"><span>10-year levered IRR</span><strong>{model.tenYearIrr.toFixed(1)}%</strong><small>Calculated from cash invested, annual cash flow, mortgage payoff, projected exit, and {EXIT_COST_PCT}% selling costs.</small></div>
+        </div>
+        <p className="deal-decision-story"><b>In English:</b> {decision.story}</p>
+        <div className="deal-decision-checks"><div><span>Year-one cash flow</span><strong className={monthlyCashFlow >= 0 ? "positive" : "negative"}>{money.format(monthlyCashFlow)}/mo</strong><small>{monthlyCashFlow >= 0 ? "Income remains after expenses and debt." : "The model needs additional cash each month."}</small></div><div><span>Debt coverage</span><strong className={model.dscr >= 1.2 ? "positive" : model.dscr < 1 ? "negative" : ""}>{model.dscr.toFixed(2)}× DSCR</strong><small>{model.dscr >= 1.2 ? "Clears the 1.20× screening cushion." : "1.20× is the next lender-style screen."}</small></div><div><span>Break-even occupancy</span><strong className={model.breakEvenOccupancy <= 90 ? "positive" : "negative"}>{model.breakEvenOccupancy.toFixed(1)}%</strong><small>{model.breakEvenOccupancy <= 90 ? "Leaves room for normal vacancy." : "Needs a tighter occupancy cushion."}</small></div><div><span>Cash-on-cash</span><strong className={model.cashOnCash >= 0 ? "positive" : "negative"}>{model.cashOnCash.toFixed(1)}%</strong><small>Year-one cash flow ÷ cash to close.</small></div></div>
+        <div className="deal-decision-footer"><p><b>Next move:</b> {decision.nextStep}</p><div className="deal-decision-evidence"><span><b>Source</b> {recordLabel}</span><span><b>Assumptions</b> price, rents, costs, loan &amp; exit</span><span><b>Calculated</b> cash flow, DSCR, IRR</span></div><a href="#deal-analysis">Adjust assumptions ↓</a></div>
+      </section>
       <section id="deal-analysis" className="panel capital-overview">
         <div className="panel-head"><div><p className="eyebrow">START HERE · EDITABLE FINANCING</p><h2>Cash needed and amortization break-even</h2><p>Change the loan, furnishing, and reserve assumptions. The graph includes projected cash flow plus principal paid down through the amortization schedule.</p></div><span className="source-pill">Live model</span></div>
         <div className="capital-layout">
@@ -172,7 +223,8 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
         </div>
         <div className="capital-kpis"><div><span>Monthly P&amp;I</span><strong>{money.format(model.monthlyPI)}</strong></div><div><span>Loan amount</span><strong>{money.format(model.loan)}</strong></div><div><span>Capital break-even</span><strong>{model.capitalBreakEvenYear ? `Year ${model.capitalBreakEvenYear}` : "Beyond 30 years"}</strong></div><div><span>Year-10 loan balance</span><strong>{money.format(model.years[9].endingBalance)}</strong></div></div>
         <div className="capital-chart"><div className="chart-label">Capital recovery <small>cumulative cash flow + principal paydown − initial cash required</small></div><svg viewBox="0 0 900 240" role="img" aria-label="Capital recovery and amortization break-even by year"><line x1="35" y1={capitalY(0)} x2="880" y2={capitalY(0)} className="zero"/><polyline points={model.years.map((row, index) => `${35 + index * 29},${capitalY(row.capitalPosition)}`).join(" ")} className="capital-line" fill="none"/>{model.capitalBreakEvenYear && <circle cx={35 + (model.capitalBreakEvenYear - 1) * 29} cy={capitalY(model.years[model.capitalBreakEvenYear - 1].capitalPosition)} r="7" className="break-even-dot"/>}</svg><div className="chart-ticks"><span>Year 1</span><span>Year 10</span><span>Year 20</span><span>Year 30 · {compactMoney.format(model.years[29].capitalPosition)}</span></div></div>
-        <details className="amortization-table"><summary>View annual amortization table</summary><div><table><thead><tr><th>Year</th><th>Beginning</th><th>Payments</th><th>Principal</th><th>Interest</th><th>Ending</th></tr></thead><tbody>{model.years.slice(0, model.termYears).map((row) => <tr key={row.year}><td>{row.year}</td><td>{money.format(row.beginningBalance)}</td><td>{money.format(row.annualDebtService)}</td><td>{money.format(row.principalPaid)}</td><td>{money.format(row.annualInterest)}</td><td>{money.format(row.endingBalance)}</td></tr>)}</tbody></table></div></details>
+        <details className="amortization-table"><summary>View annual amortization summary</summary><div><table><thead><tr><th>Year</th><th>Beginning</th><th>Payments</th><th>Principal</th><th>Interest</th><th>Ending</th></tr></thead><tbody>{model.years.slice(0, model.termYears).map((row) => <tr key={row.year}><td>{row.year}</td><td>{money.format(row.beginningBalance)}</td><td>{money.format(row.annualDebtService)}</td><td>{money.format(row.principalPaid)}</td><td>{money.format(row.annualInterest)}</td><td>{money.format(row.endingBalance)}</td></tr>)}</tbody></table></div></details>
+        <details className="amortization-table"><summary>View full monthly amortization schedule ({model.monthlySchedule.length} payments)</summary><div><table><thead><tr><th>Month</th><th>Year</th><th>Beginning</th><th>Payment</th><th>Principal</th><th>Interest</th><th>Ending</th></tr></thead><tbody>{model.monthlySchedule.map((row) => <tr key={row.month}><td>{row.month}</td><td>{row.year}</td><td>{money.format(row.beginningBalance)}</td><td>{money.format(row.payment)}</td><td>{money.format(row.principalPaid)}</td><td>{money.format(row.interest)}</td><td>{money.format(row.endingBalance)}</td></tr>)}</tbody></table></div></details>
       </section>
       <section id="overview" className="listing-hero">
         <div className="listing-gallery">
@@ -187,9 +239,8 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
         <article className="portal-card ownership-card"><div className="portal-card-heading"><div><p className="eyebrow">OWNERSHIP &amp; VALUE</p><h2>What to verify next</h2></div></div><ol className="property-timeline"><li><span>Acquired</span><strong>{subject.deedDate || "Deed date unavailable"}</strong><small>{subject.yearsOwned ? `${subject.yearsOwned} years of recorded ownership` : "Confirm through JOC / recorder"}</small></li><li><span>Current assessment</span><strong>{money.format(subject.assessedValue)}</strong><small>Use as a triage reference, not a comp</small></li><li><span>Due diligence</span><strong>Verify leases, condition, and title</strong><small>Owner motivation is never inferred from a public record</small></li></ol></article>
       </section>
       <section className="model-summary">
-        <div><span>{valueLabel}</span><strong>{money.format(subject.assessedValue)}</strong><small>Screening reference, not a sale comp</small></div><div><span>Model purchase price</span><strong>{money.format(price)}</strong><small>Editable above</small></div><div><span>Monthly cash flow</span><strong className={model.cashFlow >= 0 ? "positive" : "negative"}>{money.format(model.cashFlow / 12)}</strong><small>Before income tax</small></div><div><span>Cash to close</span><strong>{money.format(model.cashToClose)}</strong><small>Acquisition + furnishings + reserve</small></div>
+        <div><span>{valueLabel}</span><strong>{money.format(subject.assessedValue)}</strong><small>Screening reference, not a sale comp</small></div><div><span>Model purchase price</span><strong>{money.format(price)}</strong><small>Editable above</small></div><div><span>Monthly cash flow</span><strong className={model.cashFlow >= 0 ? "positive" : "negative"}>{money.format(monthlyCashFlow)}</strong><small>Before income tax</small></div><div><span>Cash to close</span><strong>{money.format(model.cashToClose)}</strong><small>Acquisition + furnishings + reserve</small></div><div><span>10-year IRR</span><strong>{model.tenYearIrr.toFixed(1)}%</strong><small>Levered, before income tax</small></div>
       </section>
-      <section className={`decision-banner ${model.dscr >= 1.2 && model.tenYearIrr >= 12 ? "decision-go" : model.dscr < 1 || model.tenYearIrr < 7 ? "decision-stop" : "decision-review"}`}><div><p className="eyebrow">PLAIN-ENGLISH READ</p><h2>{model.dscr >= 1.2 && model.tenYearIrr >= 12 ? "Worth deeper due diligence" : model.dscr < 1 || model.tenYearIrr < 7 ? "Do not pursue at these assumptions" : "Negotiate or improve the income"}</h2></div><div className="decision-reasons"><span>{model.cashFlow >= 0 ? "✓" : "×"} {model.cashFlow >= 0 ? "Positive monthly cash flow" : "Negative monthly cash flow"}</span><span>{model.dscr >= 1.2 ? "✓" : "×"} DSCR {model.dscr.toFixed(2)}×</span><span>{model.tenYearIrr >= 12 ? "✓" : "×"} 10-year IRR {model.tenYearIrr.toFixed(1)}%</span><span>{model.breakEvenOccupancy <= 90 ? "✓" : "×"} Break-even occupancy {model.breakEvenOccupancy.toFixed(1)}%</span></div></section>
 
       <section className="owner-occupy panel"><div className="owner-copy"><p className="eyebrow">HOUSE-HACK / OWNER-OCCUPANT VIEW</p><h2>Live in one unit. Let {otherUnits} units offset the payment.</h2><p>The model applies the vacancy assumption to scheduled rent from the other {otherUnits} units. {units <= 4 ? "Qualification rules and eligible rents must be confirmed by a lender and appraiser." : "Properties with more than four units require commercial lending review; this is not an FHA qualification test."}</p><div className="owner-numbers"><div><span>Other {otherUnits} units</span><strong>{money.format(model.otherUnitRent)}<small>/mo</small></strong></div><div><span>Estimated PITI</span><strong>{money.format(model.piti)}<small>/mo</small></strong></div><div><span>Net housing cost</span><strong className={model.ownerHousingCost <= 2000 ? "positive" : "negative"}>{money.format(model.ownerHousingCost)}<small>/mo</small></strong></div><div><span>{units <= 4 ? "FHA-style self-sufficiency margin" : "Other-unit rent less PITI"}</span><strong className={model.fhaSelfSufficiencyMargin >= 0 ? "positive" : "negative"}>{money.format(model.fhaSelfSufficiencyMargin)}<small>/mo</small></strong></div></div></div><div className="break-even-graph"><h3>Occupancy break-even</h3><div className="occupancy-track"><div className="danger-zone" style={{ width: `${Math.min(100, model.breakEvenOccupancy)}%` }}/><i className="break-marker" style={{ left: `${Math.min(100, model.breakEvenOccupancy)}%` }}><b>Break even</b><span>{model.breakEvenOccupancy.toFixed(1)}%</span></i><i className="assumed-marker" style={{ left: `${100 - vacancy}%` }}><b>Assumed</b><span>{100 - vacancy}%</span></i></div><div className="occupancy-scale"><span>0% occupied</span><span>100% occupied</span></div><p>{model.breakEvenOccupancy > 95 ? "Very fragile: the deal needs near-perfect occupancy." : model.breakEvenOccupancy > 85 ? "Thin cushion: one vacancy can materially hurt cash flow." : "The model has a reasonable occupancy cushion."}</p></div></section>
 

@@ -34,12 +34,34 @@ export function mortgageBalance(principal: number, annualRatePct: number, years:
 }
 
 export function irr(cashFlows: number[]) {
-  let low = -0.99;
-  let high = 10;
+  const flows = cashFlows.map((value) => Number.isFinite(value) ? value : 0);
+  if (!flows.some((value) => value < 0) || !flows.some((value) => value > 0)) return 0;
+
+  const npv = (rate: number) => flows.reduce((sum, cashFlow, index) => sum + cashFlow / Math.pow(1 + rate, index), 0);
+  let low = -0.9999;
+  let high = 1;
+  let lowNpv = npv(low);
+  let highNpv = npv(high);
+
+  // Expand the upper bound until the cash-flow series brackets a result. A
+  // fixed upper bound can return an implausibly high IRR when no root exists.
+  while (lowNpv * highNpv > 0 && high < 1024) {
+    high *= 2;
+    highNpv = npv(high);
+  }
+  if (lowNpv * highNpv > 0) return 0;
+
   for (let iteration = 0; iteration < 160; iteration++) {
     const rate = (low + high) / 2;
-    const npv = cashFlows.reduce((sum, cashFlow, index) => sum + cashFlow / Math.pow(1 + rate, index), 0);
-    if (npv > 0) low = rate; else high = rate;
+    const value = npv(rate);
+    if (value === 0) return rate * 100;
+    if (lowNpv * value > 0) {
+      low = rate;
+      lowNpv = value;
+    } else {
+      high = rate;
+      highNpv = value;
+    }
   }
   return (low + high) / 2 * 100;
 }
