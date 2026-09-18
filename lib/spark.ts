@@ -57,9 +57,34 @@ export type SparkListingMedia = {
   listingNumber: string;
   photos: SparkListingPhoto[];
   facts: SparkListingFacts;
+  addressVerified: boolean;
 };
 
 const EMPTY_FACTS: SparkListingFacts = { buildingArea: null, garageSpaces: null, carportSpaces: null, subdivision: "", bedrooms: null, bathrooms: null };
+
+function canonicalStreetAddress(value: unknown) {
+  const abbreviations: Record<string, string> = {
+    ALLEY: "ALY", AVENUE: "AVE", BOULEVARD: "BLVD", CIRCLE: "CIR", COURT: "CT", DRIVE: "DR",
+    EAST: "E", HIGHWAY: "HWY", LANE: "LN", NORTH: "N", PARKWAY: "PKWY", PLACE: "PL",
+    ROAD: "RD", SOUTH: "S", STREET: "ST", TERRACE: "TER", TRAIL: "TRL", WEST: "W",
+  };
+  return String(value ?? "")
+    .split(",", 1)[0]
+    .toUpperCase()
+    .replace(/\b(APARTMENT|APT|UNIT|SUITE|STE)\s*#?\s*[A-Z0-9-]+\b/g, "")
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((token) => abbreviations[token] ?? token)
+    .join(" ");
+}
+
+function listingMatchesAddress(listing: SparkListing, targetAddress: string) {
+  const fields = listing.StandardFields ?? listing;
+  return [fields.UnparsedAddress, fields.StreetAddress, listing.UnparsedAddress, listing.StreetAddress]
+    .some((address) => canonicalStreetAddress(address) === targetAddress);
+}
 
 function numberOrNull(value: unknown) {
   if (value === null || value === undefined || value === "" || value === "********") return null;
@@ -151,7 +176,8 @@ export async function verifySparkConnection() {
  */
 export async function getSparkListingPhotos(address: string) {
   const normalizedAddress = address.split(",")[0]?.trim();
-  if (!normalizedAddress) return { listingNumber: "", photos: [] as SparkListingPhoto[], facts: EMPTY_FACTS } satisfies SparkListingMedia;
+  const targetAddress = canonicalStreetAddress(normalizedAddress);
+  if (!normalizedAddress || !targetAddress) return { listingNumber: "", photos: [] as SparkListingPhoto[], facts: EMPTY_FACTS, addressVerified: false } satisfies SparkListingMedia;
 
   try {
     const escapedAddress = normalizedAddress.replace(/'/g, "''");
@@ -162,17 +188,18 @@ export async function getSparkListingPhotos(address: string) {
       filter: `StreetAddress Eq '${escapedAddress}'`,
       orderBy: "-ModificationTimestamp",
       limit: 25,
-      select: ["ListingId", "ListingKey", "UnparsedAddress", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
+      select: ["ListingId", "ListingKey", "StreetAddress", "UnparsedAddress", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
     });
     const pieces = normalizedAddress.replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/);
-    const fallbackTerm = pieces.slice(0, 2).join(" ").replace(/'/g, "''");
-    const fallback = primary.Results.length || !fallbackTerm ? { Results: [] as SparkListing[] } : await getSparkListings({
+    const fallbackTerm = pieces.slice(0, Math.min(4, pieces.length)).join(" ").replace(/'/g, "''");
+    const primaryMatches = primary.Results.filter((listing) => listingMatchesAddress(listing, targetAddress));
+    const fallback = primaryMatches.length || !fallbackTerm ? { Results: [] as SparkListing[] } : await getSparkListings({
       filter: `UnparsedAddress Eq contains('${fallbackTerm}')`,
       orderBy: "-ModificationTimestamp",
       limit: 25,
-      select: ["ListingId", "ListingKey", "UnparsedAddress", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
+      select: ["ListingId", "ListingKey", "StreetAddress", "UnparsedAddress", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
     });
-    const candidates = [...primary.Results, ...fallback.Results]
+    const candidates = [...primaryMatches, ...fallback.Results.filter((listing) => listingMatchesAddress(listing, targetAddress))]
       .filter((listing, index, entries) => {
         const id = String(listing.Id ?? listing.ListingKey ?? "");
         return id && entries.findIndex((entry) => String(entry.Id ?? entry.ListingKey ?? "") === id) === index;
@@ -205,17 +232,17 @@ export async function getSparkListingPhotos(address: string) {
             imageUrl,
           };
         }).filter((photo) => Boolean(photo.imageUrl));
-        if (photos.length) return { listingNumber, photos, facts: candidateFacts } satisfies SparkListingMedia;
+        if (photos.length) return { listingNumber, photos, facts: candidateFacts, addressVerified: true } satisfies SparkListingMedia;
       } catch {
         // A historical record can be retained while its photos are restricted.
         // Continue through the remaining listing history instead of giving up.
       }
     }
 
-    return { listingNumber: bestListingNumber, photos: [] as SparkListingPhoto[], facts: bestFacts } satisfies SparkListingMedia;
+    return { listingNumber: bestListingNumber, photos: [] as SparkListingPhoto[], facts: bestFacts, addressVerified: Boolean(bestListingNumber) } satisfies SparkListingMedia;
   } catch {
     // A missing listing or a feed that restricts photos should not prevent the
     // deal screen from loading. The UI keeps its Street View fallback instead.
-    return { listingNumber: "", photos: [] as SparkListingPhoto[], facts: EMPTY_FACTS } satisfies SparkListingMedia;
+    return { listingNumber: "", photos: [] as SparkListingPhoto[], facts: EMPTY_FACTS, addressVerified: false } satisfies SparkListingMedia;
   }
 }
