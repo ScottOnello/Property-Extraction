@@ -80,10 +80,20 @@ function canonicalStreetAddress(value: unknown) {
     .join(" ");
 }
 
-function listingMatchesAddress(listing: SparkListing, targetAddress: string) {
+function canonicalCity(value: unknown) {
+  return String(value ?? "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, " ")
+    .trim()
+    .replace(/\bMUNICIPALITY OF\b/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function listingMatchesAddress(listing: SparkListing, targetAddress: string, targetCity: string) {
   const fields = listing.StandardFields ?? listing;
-  return [fields.UnparsedAddress, fields.StreetAddress, listing.UnparsedAddress, listing.StreetAddress]
+  const addressMatches = [fields.UnparsedAddress, fields.StreetAddress, listing.UnparsedAddress, listing.StreetAddress]
     .some((address) => canonicalStreetAddress(address) === targetAddress);
+  return addressMatches && canonicalCity(fields.City ?? listing.City) === targetCity;
 }
 
 function numberOrNull(value: unknown) {
@@ -174,10 +184,11 @@ export async function verifySparkConnection() {
  * Find the most recently modified MLS record for a municipal property and
  * return display-ready MLS images. Spark credentials stay on the server.
  */
-export async function getSparkListingPhotos(address: string) {
+export async function getSparkListingPhotos(address: string, city: string) {
   const normalizedAddress = address.split(",")[0]?.trim();
   const targetAddress = canonicalStreetAddress(normalizedAddress);
-  if (!normalizedAddress || !targetAddress) return { listingNumber: "", photos: [] as SparkListingPhoto[], facts: EMPTY_FACTS, addressVerified: false } satisfies SparkListingMedia;
+  const targetCity = canonicalCity(city);
+  if (!normalizedAddress || !targetAddress || !targetCity) return { listingNumber: "", photos: [] as SparkListingPhoto[], facts: EMPTY_FACTS, addressVerified: false } satisfies SparkListingMedia;
 
   try {
     const escapedAddress = normalizedAddress.replace(/'/g, "''");
@@ -188,18 +199,18 @@ export async function getSparkListingPhotos(address: string) {
       filter: `StreetAddress Eq '${escapedAddress}'`,
       orderBy: "-ModificationTimestamp",
       limit: 25,
-      select: ["ListingId", "ListingKey", "StreetAddress", "UnparsedAddress", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
+      select: ["ListingId", "ListingKey", "StreetAddress", "UnparsedAddress", "City", "StateOrProvince", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
     });
     const pieces = normalizedAddress.replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/);
     const fallbackTerm = pieces.slice(0, Math.min(4, pieces.length)).join(" ").replace(/'/g, "''");
-    const primaryMatches = primary.Results.filter((listing) => listingMatchesAddress(listing, targetAddress));
+    const primaryMatches = primary.Results.filter((listing) => listingMatchesAddress(listing, targetAddress, targetCity));
     const fallback = primaryMatches.length || !fallbackTerm ? { Results: [] as SparkListing[] } : await getSparkListings({
       filter: `UnparsedAddress Eq contains('${fallbackTerm}')`,
       orderBy: "-ModificationTimestamp",
       limit: 25,
-      select: ["ListingId", "ListingKey", "StreetAddress", "UnparsedAddress", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
+      select: ["ListingId", "ListingKey", "StreetAddress", "UnparsedAddress", "City", "StateOrProvince", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
     });
-    const candidates = [...primaryMatches, ...fallback.Results.filter((listing) => listingMatchesAddress(listing, targetAddress))]
+    const candidates = [...primaryMatches, ...fallback.Results.filter((listing) => listingMatchesAddress(listing, targetAddress, targetCity))]
       .filter((listing, index, entries) => {
         const id = String(listing.Id ?? listing.ListingKey ?? "");
         return id && entries.findIndex((entry) => String(entry.Id ?? entry.ListingKey ?? "") === id) === index;

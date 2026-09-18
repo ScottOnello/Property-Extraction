@@ -103,17 +103,24 @@ function garageDealToProperty(deal: GarageDeal): Property {
 export default async function AnalyzePage({ searchParams }: { searchParams: Promise<{ parcel?: string; sixplex?: string; listing?: string }> }) {
   const query = await searchParams;
   let subject: Property | undefined;
+  let photoCity = "Anchorage";
   let references: { address: string; value: number; yearBuilt: number | null; parcelId: string }[] = [];
 
   if (query.sixplex) {
     const { confirmed, review } = await getSixplexData();
     const prospect = [...confirmed, ...review].find((item) => item.MLS_Number === query.sixplex);
-    if (prospect) subject = sixplexToProperty(prospect);
+    if (prospect) {
+      subject = sixplexToProperty(prospect);
+      photoCity = prospect.City;
+    }
     else return <main className="workspace"><h1>Sixplex record unavailable</h1><p>Return to the sixplex list and select the property again.</p></main>;
   }
   if (query.listing) {
     const garageDeal = await getGarageDealByListingId(query.listing);
-    if (garageDeal) subject = garageDealToProperty(garageDeal);
+    if (garageDeal) {
+      subject = garageDealToProperty(garageDeal);
+      photoCity = garageDeal.City;
+    }
     else return <main className="workspace"><h1>MLS garage record unavailable</h1><p>Return to Garage Deals and select the property again.</p></main>;
   }
 
@@ -127,6 +134,6 @@ export default async function AnalyzePage({ searchParams }: { searchParams: Prom
       .map((property) => ({ address: property.address, value: property.assessedValue, yearBuilt: property.yearBuilt, parcelId: property.parcelId }));
   }
   if (!subject) return <main className="workspace"><h1>No properties available</h1></main>;
-  const listingMedia = await getSparkListingPhotos(subject.address);
+  const listingMedia = await getSparkListingPhotos(subject.address, photoCity);
   return <AnalysisClient subject={subject} references={references} listingMedia={listingMedia} />;
 }
