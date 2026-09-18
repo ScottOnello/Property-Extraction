@@ -135,5 +135,5 @@ export default async function AnalyzePage({ searchParams }: { searchParams: Prom
   }
   if (!subject) return <main className="workspace"><h1>No properties available</h1></main>;
   const listingMedia = await getSparkListingPhotos(subject.address, photoCity);
-  return <AnalysisClient subject={subject} references={references} listingMedia={listingMedia} />;
+  return <AnalysisClient subject={subject} references={references} listingMedia={listingMedia} streetViewApiKey={process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ?? ""} />;
 }

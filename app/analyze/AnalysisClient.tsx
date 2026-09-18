@@ -6,6 +6,7 @@ import type { Property } from "@/lib/data";
 import type { SparkListingMedia } from "@/lib/spark";
 import { irr } from "@/lib/finance";
 import { PUBLIC_PHOTO_SOURCES, ZILLOW_MARKET_PULSE } from "@/lib/market";
+import GoogleStreetView from "./GoogleStreetView";
 
 type Comp = { id: number; address: string; soldPrice: number; saleDate: string; sqft: number; units: number };
 type Reference = { address: string; value: number; yearBuilt: number | null; parcelId: string };
@@ -37,7 +38,7 @@ function Num({ label, value, onChange, suffix }: { label: string; value: number;
   return <label className="model-field"><span>{label}</span><div><input type="number" value={value} onChange={(event) => { const nextValue = Number(event.target.value); onChange(Number.isFinite(nextValue) ? nextValue : 0); }}/>{suffix && <i>{suffix}</i>}</div></label>;
 }
 
-export default function AnalysisClient({ subject, references, listingMedia }: { subject: Property; references: Reference[]; listingMedia: SparkListingMedia }) {
+export default function AnalysisClient({ subject, references, listingMedia, streetViewApiKey }: { subject: Property; references: Reference[]; listingMedia: SparkListingMedia; streetViewApiKey: string }) {
   const units = subject.units || 4;
   const otherUnits = Math.max(0, units - 1);
   const propertyLabel = units === 4 ? "Fourplex" : units === 6 ? "Sixplex" : `${units}-unit property`;
@@ -81,6 +82,7 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
   const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${mapQuery}`;
   const activeMlsPhoto = listingMedia.photos[activePhoto] ?? null;
   const primaryImage = activeMlsPhoto?.imageUrl || subject.aerialUrl;
+  const canUseInteractiveStreetView = Boolean(streetViewApiKey && subject.latitude !== null && subject.longitude !== null);
   const buildingArea = listingMedia.facts.buildingArea ?? subject.buildingArea;
   const garageSpaces = listingMedia.facts.garageSpaces ?? subject.garageSpaces;
   const neighborhoodName = listingMedia.facts.subdivision || subject.subdivision || subject.locationTier;
@@ -228,7 +230,9 @@ export default function AnalysisClient({ subject, references, listingMedia }: { 
       </section>
       <section id="overview" className="listing-hero">
         <div className="listing-gallery">
-          <a className="listing-primary-image" href={streetViewUrl} target="_blank" rel="noreferrer">{primaryImage ? <img src={primaryImage} alt={activeMlsPhoto?.caption || `Property view of ${subject.address}`}/> : <div className="image-missing">Property imagery unavailable</div>}<span>{activeMlsPhoto && listingMedia.addressVerified ? `Address-verified MLS listing ${listingMedia.listingNumber || "photo"}` : "Aerial parcel view"}</span><strong className="street-view-badge">{subject.latitude !== null ? "Open Google Street View ↗" : "Find Street View on Google ↗"}</strong></a>
+          {canUseInteractiveStreetView
+            ? <GoogleStreetView apiKey={streetViewApiKey} latitude={subject.latitude!} longitude={subject.longitude!} address={subject.address} streetViewUrl={streetViewUrl} fallbackImage={primaryImage} fallbackLabel={activeMlsPhoto && listingMedia.addressVerified ? `Address-verified MLS listing ${listingMedia.listingNumber || "photo"}` : "Aerial parcel view"}/>
+            : <a className="listing-primary-image" href={streetViewUrl} target="_blank" rel="noreferrer">{primaryImage ? <img src={primaryImage} alt={activeMlsPhoto?.caption || `Property view of ${subject.address}`}/> : <div className="image-missing">Property imagery unavailable</div>}<span>{activeMlsPhoto && listingMedia.addressVerified ? `Address-verified MLS listing ${listingMedia.listingNumber || "photo"}` : "Aerial parcel view"}</span><strong className="street-view-badge">{subject.latitude !== null ? "Open Google Street View ↗" : "Find Street View on Google ↗"}</strong></a>}
           {listingMedia.photos.length > 1 && <div className="listing-photo-rail" aria-label="MLS listing photos"><a className="street-view-tile" href={streetViewUrl} target="_blank" rel="noreferrer"><span>360°</span><b>Street View</b></a>{listingMedia.photos.slice(0, 7).map((photo, index) => <button type="button" className={index === activePhoto ? "selected" : ""} onClick={() => setActivePhoto(index)} aria-label={`Show listing photo ${index + 1}`} key={photo.id}><img src={photo.thumbnailUrl || photo.imageUrl} alt=""/></button>)}</div>}
           {!activeMlsPhoto && <div className="listing-gallery-empty"><strong>Historical MLS photos</strong><span>No address-verified MLS photo is available. Similar-address listings are intentionally excluded.</span><a href={photoSource?.url ?? zillowSearch} target="_blank" rel="noreferrer">Search public photo history ↗</a></div>}
         </div>
