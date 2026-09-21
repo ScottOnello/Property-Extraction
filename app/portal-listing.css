@@ -137,6 +137,35 @@
   border: 0;
 }
 
+.property-location-map {
+  margin-top: 22px;
+  overflow: hidden;
+}
+
+.property-location-map .panel-head {
+  padding: 22px 24px 18px;
+}
+
+.location-map-link {
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 800;
+  color: #1e54ce;
+}
+
+.property-location-map-frame {
+  display: block;
+  width: 100%;
+  height: 430px;
+  border: 0;
+}
+
+@media (max-width: 760px) {
+  .property-location-map-frame {
+    height: 330px;
+  }
+}
+
 .google-street-view-loading {
   position: absolute;
   inset: 0;
