@@ -1,11 +1,12 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Property } from "@/lib/data";
 import type { SparkListingMedia } from "@/lib/spark";
 import { irr } from "@/lib/finance";
 import { PUBLIC_PHOTO_SOURCES, ZILLOW_MARKET_PULSE } from "@/lib/market";
+import { DEAL_FEEDBACK_STORAGE_KEY, personalDealFit, rateDeal, readDealFeedback, type DealFeedback, type DealRating, type DealSignals } from "@/lib/deal-feedback";
 import GoogleStreetView from "./GoogleStreetView";
 import GoogleLocationMap from "./GoogleLocationMap";
 
@@ -72,6 +73,21 @@ export default function AnalysisClient({ subject, references, listingMedia, stre
   const [comps, setComps] = useState<Comp[]>([]);
   const [nextCompId, setNextCompId] = useState(1);
   const [activePhoto, setActivePhoto] = useState(0);
+  const [feedback, setFeedback] = useState<DealFeedback[]>([]);
+  const [feedbackReady, setFeedbackReady] = useState(false);
+  const [feedbackError, setFeedbackError] = useState(false);
+  useEffect(() => {
+    let active = true;
+    const load = () => {
+      if (!active) return;
+      try { setFeedback(readDealFeedback(window.localStorage.getItem(DEAL_FEEDBACK_STORAGE_KEY))); }
+      catch { setFeedbackError(true); }
+      setFeedbackReady(true);
+    };
+    queueMicrotask(load);
+    window.addEventListener("storage", load);
+    return () => { active = false; window.removeEventListener("storage", load); };
+  }, []);
   const scenario = scenarios[active];
   const photoSource = PUBLIC_PHOTO_SOURCES.find((source) => subject.address.toUpperCase().startsWith(source.address));
   const searchAddress = subject.address.includes(",") ? subject.address : `${subject.address} Anchorage AK`;
@@ -170,6 +186,23 @@ export default function AnalysisClient({ subject, references, listingMedia, stre
   const valueHigh = Math.round(subject.assessedValue * 1.08 / 1000) * 1000;
   const verifiedCompCount = comps.filter((comp) => comp.soldPrice > 0).length;
   const monthlyCashFlow = model.cashFlow / 12;
+  const dealSignals: DealSignals = {
+    units, garageSpaces,
+    locationScore: subject.locationGrade === "Unrated" ? null : subject.locationScore,
+    transitCorridor: subject.locationGrade === "Unrated" ? null : subject.inTransitCorridor,
+    yearBuilt: subject.yearBuilt || null,
+    price, monthlyCashFlow, dscr: model.dscr, tenYearIrr: model.tenYearIrr,
+  };
+  const ownRating = feedback.find((row) => row.id === subject.parcelId)?.rating;
+  const personalFit = personalDealFit(subject.parcelId, dealSignals, feedback);
+  function saveRating(rating: DealRating) {
+    const next = rateDeal(feedback, { id: subject.parcelId, address: subject.address, rating, signals: dealSignals, ratedAt: new Date().toISOString() });
+    try {
+      window.localStorage.setItem(DEAL_FEEDBACK_STORAGE_KEY, JSON.stringify(next));
+      setFeedback(next);
+      setFeedbackError(false);
+    } catch { setFeedbackError(true); }
+  }
   const decision = (() => {
     const hasCoreInputs = price > 0 && monthlyRent > 0;
     const isDown = !hasCoreInputs || monthlyCashFlow < 0 || model.dscr < 1 || model.tenYearIrr < 7 || model.breakEvenOccupancy > 100;
@@ -215,6 +248,12 @@ export default function AnalysisClient({ subject, references, listingMedia, stre
           <div className="deal-decision-irr"><span>10-year levered IRR</span><strong>{model.tenYearIrr.toFixed(1)}%</strong><small>Calculated from cash invested, annual cash flow, mortgage payoff, projected exit, and {EXIT_COST_PCT}% selling costs.</small></div>
         </div>
         <p className="deal-decision-story"><b>In English:</b> {decision.story}</p>
+        <div className="deal-feedback">
+          <div><b>Your rating</b><span>Would you pursue this deal? Your answer helps rank similar deals for you.</span></div>
+          <div className="deal-feedback-buttons"><button type="button" className={ownRating === "good" ? "selected good" : ""} aria-pressed={ownRating === "good"} onClick={() => saveRating("good")}>👍 Good deal</button><button type="button" className={ownRating === "bad" ? "selected bad" : ""} aria-pressed={ownRating === "bad"} onClick={() => saveRating("bad")}>👎 Bad deal</button></div>
+          <div className={`deal-personal-fit fit-${personalFit.kind}`}><b>Your fit: {feedbackReady ? personalFit.label : "Loading ratings"}</b><span>{feedbackReady ? personalFit.detail : "Checking saved ratings…"}</span></div>
+          <small>{feedbackError ? "Your rating could not be saved in this browser." : "Ratings are saved on this browser only. They do not change the financial calculation."}</small>
+        </div>
         <div className="deal-decision-checks"><div><span>Year-one cash flow</span><strong className={monthlyCashFlow >= 0 ? "positive" : "negative"}>{money.format(monthlyCashFlow)}/mo</strong><small>{monthlyCashFlow >= 0 ? "Income remains after expenses and debt." : "The model needs additional cash each month."}</small></div><div><span>Debt coverage</span><strong className={model.dscr >= 1.2 ? "positive" : model.dscr < 1 ? "negative" : ""}>{model.dscr.toFixed(2)}× DSCR</strong><small>{model.dscr >= 1.2 ? "Clears the 1.20× screening cushion." : "1.20× is the next lender-style screen."}</small></div><div><span>Break-even occupancy</span><strong className={model.breakEvenOccupancy <= 90 ? "positive" : "negative"}>{model.breakEvenOccupancy.toFixed(1)}%</strong><small>{model.breakEvenOccupancy <= 90 ? "Leaves room for normal vacancy." : "Needs a tighter occupancy cushion."}</small></div><div><span>Cash-on-cash</span><strong className={model.cashOnCash >= 0 ? "positive" : "negative"}>{model.cashOnCash.toFixed(1)}%</strong><small>Year-one cash flow ÷ cash to close.</small></div></div>
         <div className="deal-decision-footer"><p><b>Next move:</b> {decision.nextStep}</p><div className="deal-decision-evidence"><span><b>Source</b> {recordLabel}</span><span><b>Assumptions</b> price, rents, costs, loan &amp; exit</span><span><b>Calculated</b> cash flow, DSCR, IRR</span></div><a href="#deal-analysis">Adjust assumptions ↓</a></div>
       </section>
