@@ -249,7 +249,7 @@ export default function AnalysisClient({ subject, references, listingMedia, stre
         </div>
         <p className="deal-decision-story"><b>In English:</b> {decision.story}</p>
         <div className="deal-feedback">
-          <div><b>Your rating</b><span>Would you pursue this deal? Your answer helps rank similar deals for you.</span></div>
+          <div><b>Your rating</b><span>Would you pursue this deal? Your answer helps judge similar deals for you.</span></div>
           <div className="deal-feedback-buttons"><button type="button" className={ownRating === "good" ? "selected good" : ""} aria-pressed={ownRating === "good"} onClick={() => saveRating("good")}>👍 Good deal</button><button type="button" className={ownRating === "bad" ? "selected bad" : ""} aria-pressed={ownRating === "bad"} onClick={() => saveRating("bad")}>👎 Bad deal</button></div>
           <div className={`deal-personal-fit fit-${personalFit.kind}`}><b>Your fit: {feedbackReady ? personalFit.label : "Loading ratings"}</b><span>{feedbackReady ? personalFit.detail : "Checking saved ratings…"}</span></div>
           <small>{feedbackError ? "Your rating could not be saved in this browser." : "Ratings are saved on this browser only. They do not change the financial calculation."}</small>
