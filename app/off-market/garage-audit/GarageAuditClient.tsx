@@ -11,9 +11,7 @@ const PAGE_SIZE = 6;
 const STORAGE_KEY = "property-extraction-garage-visual-audit-v1";
 
 function streetViewUrl(candidate: OffMarketCandidate, apiKey: string) {
-  const location = candidate.address && candidate.address !== "Unknown address"
-    ? `${candidate.address}, Anchorage, AK`
-    : `${candidate.latitude},${candidate.longitude}`;
+  const location = `${candidate.latitude},${candidate.longitude}`;
   return `https://www.google.com/maps/embed/v1/streetview?${new URLSearchParams({ key: apiKey, location, pitch: "0", fov: "95" })}`;
 }
 
