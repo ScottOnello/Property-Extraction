@@ -50,7 +50,7 @@ export default function GarageAuditClient({ candidates, apiKey, initialPage }: {
 
   return <main className="garage-audit-shell">
     <header className="garage-audit-header">
-      <div><a href="/off-market">← Off-market candidates</a><p>VISUAL VERIFICATION WORKSPACE</p><h1>Garage audit</h1><span>Confirm the address label first. Count only garage doors belonging to the subject property; never count a neighboring structure.</span></div>
+      <div><a href="/off-market">← Off-market candidates</a><p>VISUAL VERIFICATION WORKSPACE</p><h1>Garage audit</h1><span>Confirm the address label first. Count only garage doors belonging to the subject property; never count a neighboring structure. <a href="/flexmls">Open Flexmls</a> to check MLS details.</span></div>
       <aside><strong>{checked} / {candidates.length}</strong><span>properties reviewed</span><button onClick={exportAudit}>Export audit</button></aside>
     </header>
     {!apiKey && <div className="garage-audit-warning">Google Maps is not configured for this deployment.</div>}
