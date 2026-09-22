@@ -16,7 +16,6 @@ export default function GoogleStreetView({
   const query = new URLSearchParams({
     key: apiKey,
     location: `${latitude},${longitude}`,
-    heading: "0",
     pitch: "0",
     fov: "90",
   });
