@@ -108,8 +108,8 @@ function listingFacts(fields: Record<string, unknown>): SparkListingFacts {
     garageSpaces: numberOrNull(fields.GarageSpaces),
     carportSpaces: numberOrNull(fields.CarportSpaces),
     subdivision: String(fields.SubdivisionName ?? "").trim(),
-    bedrooms: numberOrNull(fields.BedroomsTotal),
-    bathrooms: numberOrNull(fields.BathroomsTotalInteger) ?? numberOrNull(fields.BathroomsFull),
+    bedrooms: numberOrNull(fields.BedsTotal) ?? numberOrNull(fields.BedroomsTotal),
+    bathrooms: numberOrNull(fields.BathsTotal) ?? numberOrNull(fields.BathroomsTotalInteger) ?? numberOrNull(fields.BathroomsFull),
   };
 }
 
@@ -199,7 +199,7 @@ export async function getSparkListingPhotos(address: string, city: string) {
       filter: `StreetAddress Eq '${escapedAddress}'`,
       orderBy: "-ModificationTimestamp",
       limit: 25,
-      select: ["ListingId", "ListingKey", "StreetAddress", "UnparsedAddress", "City", "StateOrProvince", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
+      select: ["ListingId", "ListingKey", "StreetAddress", "UnparsedAddress", "City", "StateOrProvince", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedsTotal", "BathsTotal", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
     });
     const pieces = normalizedAddress.replace(/[^A-Za-z0-9 ]/g, " ").trim().split(/\s+/);
     const fallbackTerm = pieces.slice(0, Math.min(4, pieces.length)).join(" ").replace(/'/g, "''");
@@ -208,7 +208,7 @@ export async function getSparkListingPhotos(address: string, city: string) {
       filter: `UnparsedAddress Eq contains('${fallbackTerm}')`,
       orderBy: "-ModificationTimestamp",
       limit: 25,
-      select: ["ListingId", "ListingKey", "StreetAddress", "UnparsedAddress", "City", "StateOrProvince", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
+      select: ["ListingId", "ListingKey", "StreetAddress", "UnparsedAddress", "City", "StateOrProvince", "ModificationTimestamp", "CloseDate", "BuildingAreaTotal", "LivingArea", "GarageSpaces", "CarportSpaces", "SubdivisionName", "BedsTotal", "BathsTotal", "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull"],
     });
     const candidates = [...primaryMatches, ...fallback.Results.filter((listing) => listingMatchesAddress(listing, targetAddress, targetCity))]
       .filter((listing, index, entries) => {

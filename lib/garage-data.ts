@@ -6,8 +6,8 @@ const SELECT = [
   "ListingId", "ListingKey", "UnparsedAddress", "City", "StateOrProvince", "PostalCode", "Latitude", "Longitude",
   "NumberOfUnitsTotal", "GarageSpaces", "CarportSpaces", "PropertyType", "PropertySubType",
   "StandardStatus", "MlsStatus", "ListPrice", "ClosePrice", "CloseDate", "ModificationTimestamp",
-  "YearBuilt", "BuildingAreaTotal", "LivingArea", "SubdivisionName", "BedroomsTotal",
-  "BathroomsTotalInteger", "SourceMLSURL", "OwnerName",
+  "YearBuilt", "BuildingAreaTotal", "LivingArea", "SubdivisionName", "BedsTotal", "BathsTotal",
+  "BedroomsTotal", "BathroomsTotalInteger", "SourceMLSURL", "OwnerName",
 ];
 
 type Row = Record<string, unknown>;
@@ -87,8 +87,8 @@ function toGarageDeal(row: Row): GarageDeal | null {
     Year_Built: numberOrNull(row.YearBuilt),
     Building_Area: numberOrNull(row.BuildingAreaTotal) ?? numberOrNull(row.LivingArea),
     Subdivision: text(row.SubdivisionName),
-    Bedrooms: numberOrNull(row.BedroomsTotal),
-    Bathrooms: numberOrNull(row.BathroomsTotalInteger),
+    Bedrooms: numberOrNull(row.BedsTotal) ?? numberOrNull(row.BedroomsTotal),
+    Bathrooms: numberOrNull(row.BathsTotal) ?? numberOrNull(row.BathroomsTotalInteger),
     Modified_At: text(row.ModificationTimestamp),
     Source_URL: usableUrl(row.SourceMLSURL),
   };
@@ -127,4 +127,4 @@ export async function getGarageDealByListingId(listingId: string) {
   return toGarageDeal((result.Results[0]?.StandardFields ?? result.Results[0] ?? {}) as Row);
 }
 
-export const getGarageDeals = unstable_cache(loadGarageDeals, ["alaska-multifamily-garage-deals-v1"], { revalidate: 3600, tags: ["garage-deals"] });
+export const getGarageDeals = unstable_cache(loadGarageDeals, ["alaska-multifamily-garage-deals-v2"], { revalidate: 3600, tags: ["garage-deals"] });

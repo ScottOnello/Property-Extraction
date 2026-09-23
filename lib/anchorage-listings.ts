@@ -4,8 +4,8 @@ import { getSparkListings } from "@/lib/spark";
 
 const SELECT = [
   "ListingId", "ListingKey", "UnparsedAddress", "City", "StateOrProvince", "PostalCode",
-  "NumberOfUnitsTotal", "PropertyType", "PropertySubType", "BedroomsTotal",
-  "BathroomsTotalInteger", "BathroomsFull", "GarageSpaces", "StandardStatus", "MlsStatus",
+  "NumberOfUnitsTotal", "PropertyType", "PropertySubType", "BedsTotal", "BathsTotal",
+  "BedroomsTotal", "BathroomsTotalInteger", "BathroomsFull", "GarageSpaces", "StandardStatus", "MlsStatus",
   "ListPrice", "BuildingAreaTotal", "LivingArea", "YearBuilt", "ModificationTimestamp",
   "SourceMLSURL", "Latitude", "Longitude", "SubdivisionName",
 ];
@@ -55,8 +55,8 @@ function toListing(item: Row): AnchorageListing | null {
     listingId, address, city, postalCode: safeText(row.PostalCode),
     units: safeNumber(row.NumberOfUnitsTotal),
     propertyType: safeText(row.PropertyType), propertySubtype: safeText(row.PropertySubType),
-    bedrooms: safeNumber(row.BedroomsTotal),
-    bathrooms: safeNumber(row.BathroomsTotalInteger) ?? safeNumber(row.BathroomsFull),
+    bedrooms: safeNumber(row.BedsTotal) ?? safeNumber(row.BedroomsTotal),
+    bathrooms: safeNumber(row.BathsTotal) ?? safeNumber(row.BathroomsTotalInteger) ?? safeNumber(row.BathroomsFull),
     garageSpaces: safeNumber(row.GarageSpaces),
     status: safeText(row.StandardStatus) || safeText(row.MlsStatus) || "Unknown",
     listPrice: safeNumber(row.ListPrice),
@@ -69,27 +69,32 @@ function toListing(item: Row): AnchorageListing | null {
 }
 
 async function loadAnchorageListings() {
-  const result = await getSparkListings({
+  const query = {
     filter: "StandardStatus Eq 'Active' And City Eq 'Anchorage'",
     orderBy: "-ModificationTimestamp",
     limit: 1000,
     pagination: true,
     select: SELECT,
-  });
+  };
+  const first = await getSparkListings(query);
+  const totalRows = first.Pagination?.TotalRows ?? first.Results.length;
+  const totalPages = Math.min(10, Math.ceil(totalRows / 1000));
+  const remaining = await Promise.all(Array.from({ length: Math.max(0, totalPages - 1) }, (_, index) => getSparkListings({ ...query, page: index + 2 })));
+  const rows = [first, ...remaining].flatMap((page) => page.Results);
   const unique = new Map<string, AnchorageListing>();
-  for (const item of result.Results) {
+  for (const item of rows) {
     const listing = toListing(item);
     if (listing && listing.status.toLowerCase() === "active" && !unique.has(listing.listingId)) unique.set(listing.listingId, listing);
   }
   return {
     listings: [...unique.values()],
-    totalRows: result.Pagination?.TotalRows ?? result.Results.length,
-    loadedRows: result.Results.length,
+    totalRows,
+    loadedRows: rows.length,
     fetchedAt: new Date().toISOString(),
   };
 }
 
-export const getAnchorageListings = unstable_cache(loadAnchorageListings, ["anchorage-active-listings-v1"], { revalidate: 900, tags: ["anchorage-listings"] });
+export const getAnchorageListings = unstable_cache(loadAnchorageListings, ["anchorage-active-listings-v2"], { revalidate: 900, tags: ["anchorage-listings"] });
 
 export async function getAnchorageListingById(listingId: string) {
   const safeId = listingId.trim().replace(/'/g, "''");
