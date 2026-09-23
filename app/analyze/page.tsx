@@ -1,6 +1,7 @@
 import { getPropertyData, type Property } from "@/lib/data";
 import { getSixplexData, type SixplexProspect } from "@/lib/sixplex-data";
 import { getGarageDealByListingId, type GarageDeal } from "@/lib/garage-data";
+import { getAnchorageListingById, type AnchorageListing } from "@/lib/anchorage-listings";
 import { getSparkListingPhotos } from "@/lib/spark";
 import AnalysisClient from "./AnalysisClient";
 
@@ -100,6 +101,27 @@ function garageDealToProperty(deal: GarageDeal): Property {
   };
 }
 
+function listingToProperty(listing: AnchorageListing): Property {
+  return {
+    parcelId: `mls-${listing.listingId}`,
+    address: listing.address,
+    owner: "MLS owner not reported", ownerAddress: "", ownerCity: "", ownerState: "", ownerZip: "",
+    units: listing.units ?? 1, buildingArea: listing.buildingArea,
+    garageSpaces: listing.garageSpaces, subdivision: listing.subdivision,
+    deedDate: "", yearsOwned: null, yearBuilt: listing.yearBuilt,
+    assessedValue: listing.listPrice ?? 0, zoning: "", absentee: false, outOfState: false,
+    ownerType: "MLS record", ownerKey: `mls:${listing.listingId}`,
+    baseScore: 0, portfolioBonus: 0, score: 0, portfolioCount: 1,
+    portfolioUnits: listing.units ?? 1, evidenceUrl: listing.sourceUrl || "https://ak.flexmls.com/ticket",
+    reasons: [listing.propertySubtype || listing.propertyType || "MLS listing"],
+    latitude: listing.latitude, longitude: listing.longitude, aerialUrl: "",
+    locationScore: 0, locationGrade: "Unrated", locationTier: "MLS location not scored",
+    locationReasons: ["MLS address loaded", "Municipal parcel geometry not matched"],
+    inTransitCorridor: false, transitCorridor: "Unknown", transitDistanceMiles: null,
+    lotSize: 0, yardPotential: "Unknown",
+  };
+}
+
 export default async function AnalyzePage({ searchParams }: { searchParams: Promise<{ parcel?: string; sixplex?: string; listing?: string }> }) {
   const query = await searchParams;
   let subject: Property | undefined;
@@ -121,7 +143,11 @@ export default async function AnalyzePage({ searchParams }: { searchParams: Prom
       subject = garageDealToProperty(garageDeal);
       photoCity = garageDeal.City;
     }
-    else return <main className="workspace"><h1>MLS garage record unavailable</h1><p>Return to Garage Deals and select the property again.</p></main>;
+    else {
+      const listing = await getAnchorageListingById(query.listing);
+      if (listing) { subject = listingToProperty(listing); photoCity = listing.city; }
+      else return <main className="workspace"><h1>MLS record unavailable</h1><p>Return to Browse Deals and select the property again.</p></main>;
+    }
   }
 
   if (!subject) {

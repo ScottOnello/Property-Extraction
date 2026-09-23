@@ -7,7 +7,7 @@ export const metadata = {
 
 export default function FlexmlsPage() {
   return <div className="app-shell">
-    <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a href="/">Fourplex prospects</a><a href="/off-market">Off-market candidates</a><a href="/off-market/garage-audit">Visual garage audit</a><a href="/garages">Garage deals</a><a href="/analyze">Buy Lab</a><a className="active" href="/flexmls">Flexmls</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
+    <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a href="/browse">Browse deals</a><a href="/">Fourplex prospects</a><a href="/off-market">Off-market candidates</a><a href="/off-market/garage-audit">Visual garage audit</a><a href="/garages">Garage deals</a><a href="/analyze">Buy Lab</a><a className="active" href="/flexmls">Flexmls</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
     <main className="workspace flexmls-workspace">
       <p className="eyebrow">ALASKA MLS ACCESS</p>
       <h1>Flexmls</h1>

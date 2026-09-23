@@ -1,4 +1,6 @@
 import { getPropertyData } from "@/lib/data";
+import "./browse/browse.css";
+import "./home-browse.css";
 
 const money = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 
@@ -13,11 +15,17 @@ export default async function Dashboard({ searchParams }: { searchParams: Promis
   const selected = query.parcel ? properties.find((property) => property.parcelId === query.parcel) : undefined;
   return <div className="app-shell">
     <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div>
-      <nav><a className={view === "properties" ? "active" : ""} href="/?view=properties">Fourplex prospects</a><a href="/off-market">Off-market candidates</a><a href="/sixplexes">Sixplex prospects</a><a href="/garages">Garage deals</a><a className={view === "owners" ? "active" : ""} href="/?view=owners">Owner portfolios</a><a href="/rankings">Deal rankings</a><a href="/analyze">Buy Lab</a><a href="/flexmls">Flexmls</a><a href="/#method">Scoring method</a></nav></div>
+      <nav><a href="/browse">Browse deals</a><a className={view === "properties" ? "active" : ""} href="/?view=properties">Fourplex prospects</a><a href="/off-market">Off-market candidates</a><a href="/sixplexes">Sixplex prospects</a><a href="/garages">Garage deals</a><a className={view === "owners" ? "active" : ""} href="/?view=owners">Owner portfolios</a><a href="/rankings">Deal rankings</a><a href="/analyze">Buy Lab</a><a href="/flexmls">Flexmls</a><a href="/#method">Scoring method</a></nav></div>
       <form action="/api/logout" method="post"><button className="logout">Sign out</button></form>
     </aside>
     <main className="workspace">
       <header><div><p className="eyebrow">MUNICIPALITY OF ANCHORAGE · FOURPLEX INTELLIGENCE</p><h1>Acquisition dashboard</h1><p className="muted">Prioritize long-held properties with transparent, public-record signals.</p></div><div className="live"><i/> Live municipal data<br/><small>Updated {new Date(fetchedAt).toLocaleString("en-US", { timeZone: "America/Anchorage" })} AKDT</small></div></header>
+      <form className="browse-ribbon home-browse-ribbon" aria-label="Filter Anchorage deals" action="/browse">
+        <label>Bedrooms<select name="beds" defaultValue="0"><option value="0">Any beds</option>{[1,2,3,4,5,6,8,10].map((value) => <option key={value} value={value}>{value}+ beds</option>)}</select></label>
+        <label>Bathrooms<select name="baths" defaultValue="0"><option value="0">Any baths</option>{[1,2,3,4,5,6,8,10].map((value) => <option key={value} value={value}>{value}+ baths</option>)}</select></label>
+        <label>Property<select name="type" defaultValue="all"><option value="all">All property types</option><option value="investment">Investment · 2+ units</option><option value="fourplex">Fourplex · 4 units</option><option value="fiveplus">5+ units</option><option value="single">Single unit</option></select></label>
+        <button type="submit">Browse Anchorage deals →</button>
+      </form>
       <section className="metrics"><article><span>Fourplex parcels</span><strong>{properties.length.toLocaleString()}</strong><em>Complete public layer</em></article><article><span>20+ year prospects</span><strong>{properties.filter((p) => (p.yearsOwned ?? 0) >= 20).length}</strong><em>Apparent deed duration</em></article><article><span>Owner groups</span><strong>{portfolios.length.toLocaleString()}</strong><em>Conservative normalization</em></article><article><span>Multi-fourplex groups</span><strong>{portfolios.filter((p) => p.count >= 2).length}</strong><em>Within this dataset</em></article></section>
       <section className="panel">
         <div className="panel-head"><div><h2>{view === "properties" ? "Ranked prospects" : "Owner portfolios"}</h2><p>{view === "properties" ? `${prospects.length} properties match the current filters` : `${owners.length} owner groups match the current filters`}</p></div>
