@@ -33,7 +33,7 @@ export default async function BrowsePage({ searchParams }: { searchParams: Promi
       id: `mls-${listing.listingId}`, address: listing.address, source: "MLS active",
       units: listing.units, bedrooms: listing.bedrooms, bathrooms: listing.bathrooms,
       price: listing.listPrice, priceLabel: "List price", garageSpaces: listing.garageSpaces,
-      detail: [listing.propertySubtype || listing.propertyType, `MLS ${listing.listingId}`, listing.postalCode].filter(Boolean).join(" · "),
+      detail: [listing.propertySubtype || listing.propertyType, `MLS ${listing.listingId}`, listing.postalCode].filter((part) => part && part.length > 1).join(" · "),
       href: `/analyze?listing=${encodeURIComponent(listing.listingId)}`,
     })),
     ...(offMarket?.candidates ?? []).map((candidate): Deal => ({
