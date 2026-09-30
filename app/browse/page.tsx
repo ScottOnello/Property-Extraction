@@ -57,7 +57,7 @@ export default async function BrowsePage({ searchParams }: { searchParams: Promi
   });
 
   return <div className="app-shell browse-shell">
-    <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a className="active" href="/browse">Browse deals</a><a href="/">Fourplex prospects</a><a href="/off-market">Off-market candidates</a><a href="/off-market/garage-audit">Visual garage audit</a><a href="/garages">Garage deals</a><a href="/rankings">Deal rankings</a><a href="/analyze">Buy Lab</a><a href="/flexmls">Flexmls</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
+    <aside className="sidebar"><div><div className="logo"><span>PE</span><div>Property<br/>Extraction</div></div><nav><a className="active" href="/browse">Browse deals</a><a href="/acquire">Fourplex acquisition</a><a href="/">Fourplex prospects</a><a href="/off-market">Off-market candidates</a><a href="/off-market/garage-audit">Visual garage audit</a><a href="/garages">Garage deals</a><a href="/rankings">Deal rankings</a><a href="/analyze">Buy Lab</a><a href="/flexmls">Flexmls</a></nav></div><form action="/api/logout" method="post"><button className="logout">Sign out</button></form></aside>
     <main className="workspace browse-workspace">
       <header className="browse-header"><div><p className="eyebrow">ANCHORAGE DEAL BROWSER</p><h1>Find a property to analyze</h1><p className="muted">Active Alaska MLS listings and long-held off-market fourplex candidates in one place.</p></div></header>
       <form className="browse-ribbon" aria-label="Filter Anchorage deals" action="/browse">
