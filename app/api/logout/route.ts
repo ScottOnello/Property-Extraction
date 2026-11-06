@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
     catch { return new NextResponse("Sign-out temporarily unavailable", { status: 503 }); }
   }
   const response = NextResponse.redirect(new URL("/login", request.url), 303);
-  for (const name of ["property_session", "property_email_session", "property_challenge", "property_totp_session"]) {
+  for (const name of ["property_session", "property_email_session", "property_challenge"]) {
     response.cookies.set(name, "", { httpOnly: true, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/", maxAge: 0 });
   }
   return response;

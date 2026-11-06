@@ -1,5 +1,4 @@
 import { enabled } from "../../lib/email-auth";
-import { authenticatorEnabled } from "../../lib/authenticator-auth";
 
 export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string; next?: string; sent?: string }> }) {
   const query = await searchParams;
@@ -7,13 +6,6 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
     <div className="brand-mark">PE</div><p className="eyebrow">ANCHORAGE ACQUISITIONS</p>
     <h1>Property intelligence, privately organized.</h1>
     <p className="muted">Sign in to review fourplex prospects, owner portfolios, and transparent opportunity scores.</p>
-    {authenticatorEnabled() && <form action="/api/authenticator-login" method="post">
-      <input type="hidden" name="next" value={query.next ?? "/"} />
-      <label htmlFor="authenticator-code">Code from your phone authenticator</label>
-      <input id="authenticator-code" name="code" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} required autoFocus />
-      {query.error === "authenticator" && <p className="error">That code was not accepted. Check the time on your phone and try the current code.</p>}
-      <button type="submit">Sign in with authenticator</button>
-    </form>}
     {enabled() && <>
       <p>Receive a six-digit code at scott@anchorinvest.co. Codes expire after 30 minutes.</p>
       <form action="/api/email-login" method="post">
@@ -32,7 +24,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
       {query.error && <p className="error">{query.error === "rate" ? "Please wait before requesting another code. Limit: five requests per hour." : "The code was not accepted. It may have expired or already been used."}</p>}
     </>}
     {process.env.PASSWORD_LOGIN_DISABLED !== "true" && <form action="/api/login" method="post"><input type="hidden" name="next" value={query.next ?? "/"} />
-      <label htmlFor="password">Access password</label><input id="password" name="password" type="password" autoComplete="current-password" required autoFocus={!authenticatorEnabled()} />
+      <label htmlFor="password">Access password</label><input id="password" name="password" type="password" autoComplete="current-password" required autoFocus />
       {query.error === "1" && <p className="error">That password was not accepted.</p>}<button type="submit">Open dashboard</button>
     </form>}<p className="fine">Assessment data is a screening source. Verify ownership and deed history independently.</p>
   </section></main>;
