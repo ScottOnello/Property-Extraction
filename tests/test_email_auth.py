@@ -26,11 +26,11 @@ class EmailAuthTests(unittest.TestCase):
 
     def test_single_use_and_session_expiry(self):
         self.assertEqual(self.issue(), 1)
-        self.assertGreater(self.db.ttl("code"), 598)
-        self.assertLessEqual(self.db.ttl("code"), 600)
+        self.assertGreater(self.db.ttl("code"), 1798)
+        self.assertLessEqual(self.db.ttl("code"), 1800)
         self.assertEqual(self.verify(), 1)
         self.assertEqual(self.db.get("session"), "1")
-        self.assertEqual(self.db.ttl("session"), 43200)
+        self.assertEqual(self.db.ttl("session"), 1800)
         self.assertEqual(self.verify(session="replay"), 0)
         self.assertIsNone(self.db.get("replay"))
 
