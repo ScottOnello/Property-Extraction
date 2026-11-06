@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { enabled, validSession } from "./lib/email-auth";
 
 async function expectedToken() {
   const secret = process.env.AUTH_SECRET ?? "";
@@ -10,7 +11,15 @@ async function expectedToken() {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (pathname.startsWith("/login") || pathname.startsWith("/api/login") || pathname.startsWith("/_next") || pathname === "/favicon.ico") return NextResponse.next();
+  if (pathname === "/login" || pathname === "/api/login" || pathname === "/api/email-login" || pathname.startsWith("/_next") || pathname === "/favicon.ico") return NextResponse.next();
+  if (enabled()) {
+    try {
+      if (await validSession(request.cookies.get("property_email_session")?.value)) return NextResponse.next();
+    } catch {
+      return new NextResponse("Authentication temporarily unavailable.", { status: 503 });
+    }
+  }
+  if (process.env.PASSWORD_LOGIN_DISABLED === "true") return NextResponse.redirect(new URL("/login", request.url));
   if (!process.env.SITE_PASSWORD || !process.env.AUTH_SECRET) return new NextResponse("Application authentication is not configured.", { status: 503 });
   const supplied = request.cookies.get("property_session")?.value;
   if (supplied === await expectedToken()) return NextResponse.next();
@@ -19,4 +28,5 @@ export async function middleware(request: NextRequest) {
   return NextResponse.redirect(login);
 }
 
-export const config = { matcher: ["/((?!_next/static|_next/image).*)"] };
+export const config = { runtime: "nodejs", matcher: ["/((?!_next/static|_next/image).*)"] };
+
