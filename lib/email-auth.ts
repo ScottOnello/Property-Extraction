@@ -1,8 +1,8 @@
 import { createHmac, randomInt, randomBytes } from "node:crypto";
 
 export const EMAIL = "scott@anchorinvest.co";
-export const TTL = 600;
-export const SESSION_TTL = 43200;
+export const TTL = 1800;
+export const SESSION_TTL = 1800;
 export const enabled = () => process.env.EMAIL_CODE_ENABLED === "true";
 export function secret() {
   const value = process.env.AUTH_SECRET;
@@ -34,7 +34,7 @@ local n = redis.call('INCR', KEYS[1])
 if n == 1 then redis.call('EXPIRE', KEYS[1], 3600) end
 if n > 5 then return 0 end
 if not redis.call('SET', KEYS[2], '1', 'EX', 60, 'NX') then return 0 end
-redis.call('SET', KEYS[3], ARGV[1], 'EX', 600)
+redis.call('SET', KEYS[3], ARGV[1], 'EX', 1800)
 return 1
 `;
 export const VERIFY = `
@@ -47,7 +47,7 @@ local record = cjson.decode(value)
 record.attempts = record.attempts + 1
 if record.hash == ARGV[1] then
   redis.call('DEL', KEYS[2])
-  redis.call('SET', KEYS[3], '1', 'EX', 43200)
+  redis.call('SET', KEYS[3], '1', 'EX', 1800)
   return 1
 end
 if record.attempts >= 5 then redis.call('DEL', KEYS[2])
@@ -68,7 +68,7 @@ export async function issueCode() {
     const response = await fetch("https://api.resend.com/emails", {
       method: "POST", headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
       body: JSON.stringify({ from, to: [EMAIL], subject: "Your Property Extraction sign-in code",
-        text: `Your sign-in code is ${code}. It expires in 10 minutes and can be used once. If you did not request it, ignore this email.` }),
+        text: `Your sign-in code is ${code}. It expires in 30 minutes and can be used once. If you did not request it, ignore this email.` }),
       signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) throw new Error("Email delivery failed");
