@@ -24,7 +24,7 @@ data integration, or scheduled job configuration is changed.
 - Enter the delivered code in the same browser. Confirm dashboard access and
   that the session cookie is HttpOnly, Secure, SameSite=Strict.
 - Confirm a consumed code cannot create another session.
-- Confirm an unused code fails after ten minutes, a resend invalidates the prior
+- Confirm an unused code fails after thirty minutes, a resend invalidates the prior
   code, five wrong guesses consume it, and resend limits are enforced.
 - Confirm logout revokes the server session and protected routes require login.
 - Run build, lint, Node auth tests, and Python Lua tests.
@@ -36,13 +36,13 @@ No live verification has been recorded by this document.
 
 ## Controls
 
-Codes use cryptographic randomness, six digits, HMAC storage, and a ten-minute
+Codes use cryptographic randomness, six digits, HMAC storage, and a thirty-minute
 Redis TTL. Code consumption and session creation run in one atomic Lua operation.
 Codes are bound to a random HttpOnly browser cookie; the most recent code replaces
 the previous one. Limits are shared across all instances: one send per minute,
 five send requests per hour, five guesses per code, and ten valid-format guesses
 per ten-minute window. Limits are global for this single-user application.
-Sessions are random, stored by HMAC, expire after twelve hours, and are revoked
+Sessions are random, stored by HMAC, expire after thirty minutes, and are revoked
 on logout. Storage or provider failures fail closed.
 
 ## Local checks

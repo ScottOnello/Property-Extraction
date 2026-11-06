@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       }
       login.searchParams.set("sent", "1");
       const response = NextResponse.redirect(login, 303);
-      response.cookies.set("property_challenge", challenge, { ...options, maxAge: 600 });
+      response.cookies.set("property_challenge", challenge, { ...options, maxAge: 1800 });
       return response;
     }
     const session = await verifyCode(String(form.get("code") ?? ""), request.cookies.get("property_challenge")?.value ?? "");

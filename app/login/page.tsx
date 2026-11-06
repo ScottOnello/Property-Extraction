@@ -7,7 +7,7 @@ export default async function Login({ searchParams }: { searchParams: Promise<{ 
     <h1>Property intelligence, privately organized.</h1>
     <p className="muted">Sign in to review fourplex prospects, owner portfolios, and transparent opportunity scores.</p>
     {enabled() && <>
-      <p>Receive a six-digit code at scott@anchorinvest.co. Codes expire after 10 minutes.</p>
+      <p>Receive a six-digit code at scott@anchorinvest.co. Codes expire after 30 minutes.</p>
       <form action="/api/email-login" method="post">
         <input type="hidden" name="next" value={query.next ?? "/"} />
         <input type="hidden" name="action" value="send" />
