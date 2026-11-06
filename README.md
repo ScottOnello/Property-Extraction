@@ -6,14 +6,14 @@ This project is intentionally separate from the auction scraper and Property Und
 
 ## Private web application
 
-The repository now includes an authenticated Next.js dashboard designed for Vercel. It queries the public Anchorage ArcGIS service on the server, caches results for one hour, and does not commit generated owner/property datasets. Configure `SITE_PASSWORD` and `AUTH_SECRET` as Vercel environment variables before deployment.
+The repository now includes an authenticated Next.js dashboard designed for Vercel. It queries the public Anchorage ArcGIS service on the server, caches results for one hour, and does not commit generated owner/property datasets. Configure the Auth0 variables in `.env.example` before deployment; see `AUTH0_SETUP.md`.
 
 ```powershell
 pnpm install
 pnpm dev
 ```
 
-The dashboard provides ranked prospects, conservative owner portfolios, filters, property details, evidence links, and a visible scoring method. This password gate is intended for a small private deployment; use a full identity provider and database-backed authorization before granting access to a larger team.
+The dashboard provides ranked prospects, conservative owner portfolios, filters, property details, evidence links, and a visible scoring method. Access requires the verified owner account and an Auth0 MFA session. Legacy shared-password cookies are not accepted.
 
 ### Buy Lab
 

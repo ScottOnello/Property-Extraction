@@ -1,12 +1,13 @@
-export default async function Login({ searchParams }: { searchParams: Promise<{ error?: string; next?: string }> }) {
+import { safeReturnTo } from "../../lib/access";
+import { authConfigured } from "../../lib/auth0";
+export const dynamic = "force-dynamic";
+export default async function Login({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const query = await searchParams;
   return <main className="login-shell"><section className="login-card">
     <div className="brand-mark">PE</div><p className="eyebrow">ANCHORAGE ACQUISITIONS</p>
-    <h1>Property intelligence, privately organized.</h1>
-    <p className="muted">Sign in to review fourplex prospects, owner portfolios, and transparent opportunity scores.</p>
-    <form action="/api/login" method="post"><input type="hidden" name="next" value={query.next ?? "/"} />
-      <label htmlFor="password">Access password</label><input id="password" name="password" type="password" autoComplete="current-password" required autoFocus />
-      {query.error && <p className="error">That password was not accepted.</p>}<button type="submit">Open dashboard</button>
-    </form><p className="fine">Assessment data is a screening source. Verify ownership and deed history independently.</p>
+    <h1>Sign in to your property desk.</h1>
+    <p className="muted">Use your individual account and authenticator to access your private dashboard.</p>
+    {authConfigured() ? <a href={"/auth/login?returnTo=" + encodeURIComponent(safeReturnTo(query.next))}>Sign in securely</a> : <p>Secure sign-in is being configured. Please try again later.</p>}
+    <p className="fine">Access is limited to the approved account. Your authenticator code is requested during sign-in.</p>
   </section></main>;
 }
